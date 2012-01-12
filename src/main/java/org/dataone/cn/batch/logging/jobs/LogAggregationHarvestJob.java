@@ -1,0 +1,140 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package org.dataone.cn.batch.logging.jobs;
+
+import com.hazelcast.core.DistributedTask;
+import com.hazelcast.core.Hazelcast;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
+import java.util.Date;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
+import org.dataone.configuration.Settings;
+import org.dataone.service.types.v1.Node;
+import org.dataone.service.types.v1.NodeReference;
+import org.quartz.DisallowConcurrentExecution;
+import org.quartz.Job;
+import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
+import java.text.SimpleDateFormat;
+import java.text.ParseException;
+import java.util.concurrent.locks.Lock;
+import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
+import org.springframework.core.task.AsyncTaskExecutor;
+
+/**
+ * Quartz Job that starts off the hazelcast distributed execution of harvesting for a nodeList
+ * from a Membernode
+ * It executes only for a given membernode, and while executing excludes via a lock
+ * any other execution of a job on that membernode
+ * 
+ *
+ * @author waltz
+ */
+@DisallowConcurrentExecution
+public class LogAggregationHarvestJob implements Job {
+
+    @Override
+    public void execute(JobExecutionContext jobContext) throws JobExecutionException {
+
+        String hzLogAggregationLockMapString = Settings.getConfiguration().getString("dataone.hazelcast.logAggregatorLock");
+        // do not submit the localCNIdentifier to Hazelcast for execution
+        // rather execute it locally on the machine
+
+        String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
+        SimpleDateFormat format =
+                new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
+        Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
+        boolean nodeLocked = false;
+        String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
+        NodeReference nodeReference = new NodeReference();
+        JobExecutionException jex = null;
+        nodeReference.setValue(nodeIdentifier);
+        String lockName = nodeIdentifier;
+        // Locking on the default instance.
+        // The locking mechanism can not be on the nodeList
+        // since synchronization uses locking on the nodeList
+        HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
+        IMap<String, String> hzLogAggregatorLockMap = hazelcast.getMap(hzLogAggregationLockMapString);
+        if (hzLogAggregatorLockMap.get(lockName) == null) {
+            hzLogAggregatorLockMap.put(lockName, "1");
+        }
+
+
+        try {
+            Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size");
+            logger.debug("executing for " + nodeIdentifier + " with batch size " + batchSize);
+            nodeLocked = hzLogAggregatorLockMap.tryLock(lockName, 500L, TimeUnit.MILLISECONDS);
+            Future future = null;
+            if (nodeLocked) {
+
+                LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference, batchSize);
+                // If the node reference is the local machine nodId, then
+                // do not submit to hazelcast for distribution
+                // Rather, execute it on the local machine
+                if (nodeReference.getValue().equals(localCnIdentifier)) {
+                    AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
+                    future = executor.submit(harvestTask);
+                } else {
+                    DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
+                    ExecutorService executor = Hazelcast.getExecutorService();
+                    future = executor.submit(dtask);
+                }
+                Date lastProcessingCompletedDate = null;
+                try {
+                    lastProcessingCompletedDate = (Date) future.get();
+                } catch (InterruptedException ex) {
+                    logger.error(ex.getMessage());
+                } catch (ExecutionException ex) {
+                    logger.error(ex.getMessage());
+                }
+                // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
+                // Does not need to be stored, maybe just printed?
+                if (lastProcessingCompletedDate == null) {
+                    logger.info("ObjectListHarvestTask returned with no completion date!");
+                } else {
+                    logger.info("ObjectListHarvestTask returned at " + format.format(lastProcessingCompletedDate));
+                }
+                // think about putting the jobContext.getFireInstanceId() on a queue
+                // or something so that all the entries for that job get submitted
+                // to lucune solr in batch
+            } else {
+                // log this message, someone else has the lock (and they probably shouldn't)
+                try {
+                    // sleep for 5 seconds?
+                    Thread.sleep(5000L);
+                } catch (InterruptedException ex) {
+                    logger.debug(ex.getMessage());
+                }
+                logger.warn(jobContext.getJobDetail().getDescription() + " locked");
+
+                jex = new JobExecutionException();
+                jex.refireImmediately();
+            }
+        } catch (Exception ex) {
+            logger.error(jobContext.getJobDetail().getDescription() + " died: " + ex.getMessage());
+            jex = new JobExecutionException();
+            jex.unscheduleFiringTrigger();
+            jex.setStackTrace(ex.getStackTrace());
+        } finally {
+            if (nodeLocked) {
+                hzLogAggregatorLockMap.unlock(lockName);
+            }
+        }
+        if (jex != null) {
+            throw jex;
+        }
+    }
+}
