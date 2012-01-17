@@ -15,7 +15,7 @@ import java.util.Date;
 public class LogEntrySolrItem {
 
     @Field("id")
-    private Double id;
+    private String id;
 
     @Field("dateAggregated")
     private Date dateAggregated;
@@ -56,7 +56,7 @@ public class LogEntrySolrItem {
         
     }
 
-    public void setId(Double id) {
+    public void setId(String id) {
         this.id = id;
     }
 

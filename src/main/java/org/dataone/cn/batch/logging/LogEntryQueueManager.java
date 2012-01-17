@@ -178,7 +178,7 @@ public class LogEntryQueueManager implements Callable<String> {
                     solrItem.setDateAggregated(now);
                     Long integral = new Long(now.getTime());
                     Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                    Double id = Double.parseDouble(integral.toString() + "." + decimal.toString());
+                    String id = integral.toString() + "." + decimal.toString();
                     solrItem.setId(id);
                     logEntryBuffer.add(solrItem);
                     if (logEntryBuffer.size() >= maxIndexBufferSize) {
