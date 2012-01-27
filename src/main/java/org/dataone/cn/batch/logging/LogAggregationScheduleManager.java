@@ -4,8 +4,11 @@
  */
 package org.dataone.cn.batch.logging;
 
+import org.quartz.SimpleScheduleBuilder;
+import org.dataone.client.auth.CertificateManager;
 import org.dataone.configuration.Settings;
 import java.util.Date;
+import java.io.File;
 import com.hazelcast.partition.Partition;
 import com.hazelcast.partition.PartitionService;
 import com.hazelcast.core.Hazelcast;
@@ -31,7 +34,6 @@ import com.hazelcast.core.IMap;
 import org.quartz.JobDetail;
 import org.dataone.cn.batch.logging.jobs.LogAggregationHarvestJob;
 import com.hazelcast.core.HazelcastInstance;
-import java.text.ParseException;
 import java.util.Set;
 import org.dataone.cn.hazelcast.ldap.HazelcastLdapStore;
 import org.quartz.JobKey;
@@ -63,7 +65,9 @@ import static org.quartz.JobBuilder.*;
  * @author waltz
  */
 public class LogAggregationScheduleManager implements ApplicationContextAware, EntryListener<NodeReference, Node>, MigrationListener {
-
+    private String clientCertificateLocation =
+            Settings.getConfiguration().getString("D1Client.certificate.directory")
+            + File.separator + Settings.getConfiguration().getString("D1Client.certificate.filename");
     public static Log logger = LogFactory.getLog(LogAggregationScheduleManager.class);
     private static String groupName = "LogAggregatorHarvesting";
     private HazelcastInstance hazelcast;
@@ -72,10 +76,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     ApplicationContext applicationContext;
     PartitionService partitionService;
     Member localMember;
+    private static SimpleScheduleBuilder simpleTriggerSchedule = simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow();
+//    private static SimpleScheduleBuilder simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(2).repeatForever().withMisfireHandlingInstructionFireNow();
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
     public void init() {
         try {
             logger.info("LogAggregationScheduler starting up");
+            CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
             partitionService = Hazelcast.getPartitionService();
 
             localMember = hazelcast.getCluster().getLocalMember();
@@ -98,7 +105,8 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
 
     public void manageHarvest() throws SchedulerException {
-
+        DateTime startTime = new DateTime();
+         startTime = startTime.plusSeconds(90);
         // halt all operations
         if (scheduler.isStarted()) {
             scheduler.standby();
@@ -122,7 +130,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
 
         // Add the local CN to the jobs to be executed.
         JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + localCnIdentifier, groupName).usingJobData("NodeIdentifier", localCnIdentifier).build();
-        Trigger trigger = newTrigger().withIdentity("trigger-" + localCnIdentifier, groupName).startAt(null).withSchedule(simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow()).build();
+        Trigger trigger = newTrigger().withIdentity("trigger-" + localCnIdentifier, groupName).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
         try {
             scheduler.scheduleJob(job, trigger);
         } catch (SchedulerException ex) {
@@ -131,12 +139,12 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
 
         logger.info("Node map has " + hzNodes.size() + " entries");
         // construct new jobs and triggers based on ownership of nodes in the nodeList
-        DateTime startTime = new DateTime();
+        
         for (NodeReference key : hzNodes.localKeySet()) {
             //  membernodes that are down or do not
             // want to be synchronized
-            Node node = hzNodes.get(key);
             startTime = startTime.plusSeconds(90);
+            Node node = hzNodes.get(key);
             addHarvest(key, node, startTime.toDate());
         }
         scheduler.start();
@@ -148,7 +156,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
 
 
-    private void addHarvest (NodeReference key, Node node, Date startTime) {
+    private void addHarvest (NodeReference key, Node node, Date startDate) {
             if (node.getState().equals(NodeState.UP)
                     && node.isSynchronize() && node.getType().equals(NodeType.MN)) {
                 
@@ -158,7 +166,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
                 // Currently, the misfire configuration in the quartz.properties is 5 minutes
                 // misfire will cause the trigger to be fired again until successful
                 JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + key.getValue(), groupName).usingJobData("NodeIdentifier", key.getValue()).build();
-                Trigger trigger = newTrigger().withIdentity("trigger-" + key.getValue(), groupName).startAt(null).withSchedule(simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow()).build();
+                Trigger trigger = newTrigger().withIdentity("trigger-" + key.getValue(), groupName).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
                 try {
                     scheduler.scheduleJob(job, trigger);
                 } catch (SchedulerException ex) {

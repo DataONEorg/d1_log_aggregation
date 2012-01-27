@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans default-init-method="init" xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:hz="http://www.hazelcast.com/schema/config"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+       http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-3.0.xsd
+       http://www.hazelcast.com/schema/config http://www.hazelcast.com/schema/config/hazelcast-spring.xsd
+       http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd" >
+
+<!--
+    Document   : applicationContext.xml
+    Created on : July 23, 2010, 12:58 AM
+    Author     : rwaltz
+    Description:
+        Purpose of the document follows.
+-->
+
+    <bean id="hazelcastInstance" class="org.dataone.cn.hazelcast.HazelcastInstanceInvokingBean" factory-method="getHazelcast"/>
+    
+    <bean id="mylog" class="org.springframework.beans.factory.config.CommonsLogFactoryBean">
+        <property name="logName" value="log"/>
+    </bean>
+    
+    <bean id="log4jInitialization" class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetClass">
+            <value>org.springframework.util.Log4jConfigurer</value>
+        </property>
+        <property name="targetMethod" value="initLogging" />
+        <property name="arguments">
+            <list>
+                <value>classpath:org/dataone/configuration/log4j.properties</value>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="readSystemMetadataResource" class="org.springframework.core.io.ClassPathResource" >
+        <constructor-arg type="java.lang.String" value="org/dataone/cn/batch/logging/samples/v1/logEntry-valid.xml"/>
+    </bean>
+
+    <bean id="indexLogEntryQueue" class="java.util.concurrent.ArrayBlockingQueue">
+        <constructor-arg index="0"  value="50000" />
+        <constructor-arg index="1"  value="true" />
+    </bean>
+    
+    <bean id="logEntryTopicListener" class="org.dataone.cn.batch.logging.listener.LogEntryTopicListener" init-method="init">
+        <property name="hazelcast" ref="hazelcastInstance" />
+        <property name="indexLogEntryQueue" ref="indexLogEntryQueue" />
+    </bean>
+</beans>
