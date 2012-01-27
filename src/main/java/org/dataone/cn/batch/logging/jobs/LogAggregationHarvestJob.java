@@ -34,6 +34,11 @@ import org.springframework.core.task.AsyncTaskExecutor;
  * It executes only for a given membernode, and while executing excludes via a lock
  * any other execution of a job on that membernode
  *
+ * If the node provided is the localhost coordinating node, then the task
+ * is executed locally
+ *
+ * Job may not be executed concurrently for a single membernode or coordinating node
+ * 
  * Keep track of last date harvested
  *
  * @author waltz
@@ -80,9 +85,11 @@ public class LogAggregationHarvestJob implements Job {
                 // do not submit to hazelcast for distribution
                 // Rather, execute it on the local machine
                 if (nodeReference.getValue().equals(localCnIdentifier)) {
+                    // Execute on localhost
                     AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
                     future = executor.submit(harvestTask);
                 } else {
+                    // Distribute the task to any hazelcast process cluster instance
                     DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
                     ExecutorService executor = Hazelcast.getExecutorService();
                     future = executor.submit(dtask);
@@ -100,7 +107,7 @@ public class LogAggregationHarvestJob implements Job {
                 if (lastProcessingCompletedDate == null) {
                     logger.info("ObjectListHarvestTask returned with no completion date!");
                 } else {
-                    logger.info("ObjectListHarvestTask returned at " + format.format(lastProcessingCompletedDate));
+                    logger.info("ObjectListHarvestTask returned with a date of " + format.format(lastProcessingCompletedDate));
                 }
                 // think about putting the jobContext.getFireInstanceId() on a queue
                 // or something so that all the entries for that job get submitted

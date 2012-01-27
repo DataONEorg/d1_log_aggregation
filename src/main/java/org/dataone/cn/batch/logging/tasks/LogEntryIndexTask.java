@@ -17,6 +17,8 @@ import org.dataone.service.types.v1.LogEntry;
 import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.request.AbstractUpdateRequest.ACTION;
+import org.apache.solr.client.solrj.request.UpdateRequest;
 
 /**
  * Reads from the LogEvent tasks that need to be indexed.
@@ -35,7 +37,6 @@ public class LogEntryIndexTask implements Callable<String> {
 
     Logger logger = Logger.getLogger(LogEntryIndexTask.class.getName());
 
-    SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     List<LogEntrySolrItem> indexLogEntryBuffer;
     private SolrServer solrServer;
     public LogEntryIndexTask( SolrServer solrServer, List<LogEntrySolrItem> indexLogEntryBuffer) {
@@ -48,6 +49,7 @@ public class LogEntryIndexTask implements Callable<String> {
         logger.info("Starting LogEntryIndexTask");
         try {
             solrServer.addBeans(indexLogEntryBuffer);
+            solrServer.commit();
         } catch (SolrServerException ex) {
             // what to do with this exception??? looks bad.
             ex.printStackTrace();
@@ -55,7 +57,7 @@ public class LogEntryIndexTask implements Callable<String> {
              // what to do with this exception??? retry?
             ex.printStackTrace();
         }
-         logger.info("Ending LogEntryIndexTask");
+        logger.info("Ending LogEntryIndexTask");
         return "Done";
     }
 

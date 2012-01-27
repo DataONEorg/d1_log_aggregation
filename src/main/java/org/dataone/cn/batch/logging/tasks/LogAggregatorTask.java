@@ -30,6 +30,8 @@ import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.NodeType;
 import org.dataone.service.types.v1.Session;
 import org.dataone.service.util.DateTimeMarshaller;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.joda.time.MutableDateTime;
 
 /**
@@ -40,6 +42,9 @@ import org.joda.time.MutableDateTime;
  *
  * As an executable, it will return a date that is the latest DateSysMetadataModified
  * of the processed nodelist
+ *
+ * If the retrieve method fails for any reason in the middle of aggregation
+ * then the records on MN may become out of sync with those reported by the MN
  * 
  * @author waltz
  */
@@ -50,8 +55,9 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     private int start = 0;
     private int total = 0;
     Integer batchSize;
-    private Date now = new Date();
+
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
+
     public LogAggregatorTask(NodeReference d1NodeReference, Integer batchSize) {
         this.d1NodeReference = d1NodeReference;
         this.batchSize = batchSize;
@@ -59,7 +65,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
     @Override
     public Date call() throws Exception {
-        // we are going to write directly to ldap for the updateLastHarvested
+
+        // midnight of the current date is the latest date until which we wish to retrieve data
+        DateTime midnight = new DateTime(DateTimeZone.UTC);
+        midnight = midnight.withTime(0, 0, 0, 0);
+        // we are going to write directly to ldap for the LogLastAggregated
         // because we do not want hazelcast to spam us about
         // all of these updates since we have a listener in HarvestSchedulingManager
         // that determines when updates/additions have occured and 
@@ -67,42 +77,49 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         NodeRegistryService nodeRegistryService = new NodeRegistryService();
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
-        logger.debug("called ObjectListHarvestTask");
+        logger.debug("called LogAggregatorTask");
         HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
         ITopic<LogEntry> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
         // Need the LinkedHashMap to preserver insertion order
         Node d1Node = nodeRegistryService.getNode(d1NodeReference);
         Date lastMofidiedDate = nodeRegistryService.getLogLastAggregated(d1NodeReference);
         if (lastMofidiedDate == null) {
-            lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-00-00T00:00:00.000-00:00");
+            lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
         }
+        Date lastLoggedDate = new Date(lastMofidiedDate.getTime());
         List<LogEntry> readQueue = null;
         String d1NodeBaseUrl = d1Node.getBaseURL();
         if (d1Node.getType().equals(NodeType.CN)) {
-            d1NodeBaseUrl =  Settings.getConfiguration().getString("LogAggregator.cn_base_url");
+            d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
         }
         do {
             // read upto a 1000 objects (the default, but it can be overwritten)
             // from ListObjects and process before retrieving more
             if (start == 0 || (start < total)) {
-                readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate);
-
+                readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, midnight.toDate());
+                logger.debug("found " + readQueue.size() + " entries");
                 for (LogEntry logEntry : readQueue) {
+                    if (logEntry.getDateLogged().after(lastLoggedDate)) {
+                        lastLoggedDate = logEntry.getDateLogged();
+                    }
                     hzLogEntryTopic.publish(logEntry);
+                    logger.debug("published " + logEntry.getEntryId());
                     // Simple way to throttle publishing of messages
                     // thread should sleep of 250MS
                     Thread.sleep(250L);
+
                 }
             } else {
                 readQueue = null;
             }
         } while ((readQueue != null) && (!readQueue.isEmpty()));
-        
 
-        nodeRegistryService.setLogLastAggregated(d1NodeReference, now);
+        if (lastLoggedDate.after(lastMofidiedDate)) {
+            nodeRegistryService.setLogLastAggregated(d1NodeReference, lastLoggedDate);
+        }
 
         // return the date of completion of the task
-        return new Date();
+        return lastLoggedDate;
     }
 
     /*
@@ -110,7 +127,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      * It retrieves the list in batches and should be called iteratively
      * until all objects have been retrieved from a node.
      */
-    private List<LogEntry> retrieve(String mnUrl, Date fromDate) {
+    private List<LogEntry> retrieve(String mnUrl, Date fromDate, Date toDate) {
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
 
@@ -118,15 +135,13 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
         List<LogEntry> writeQueue = new ArrayList<LogEntry>();
 
-        Date startTime;
         Log logList = null;
-        Boolean replicationStatus = null;
 
-        MutableDateTime lastHarvestDateTime = new MutableDateTime( fromDate);
+        MutableDateTime lastHarvestDateTime = new MutableDateTime(fromDate);
 
         lastHarvestDateTime.addMillis(1);
-        Date lastHarvestDate = lastHarvestDateTime.toDate();
-        
+        fromDate = lastHarvestDateTime.toDate();
+
         logger.debug("starting retrieval " + mnUrl);
         try {
 
@@ -134,7 +149,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             // otherwise skip because when the start is equal or greater
             // then total, then all objects have been harvested
 
-            logList = mNode.getLogRecords(session, lastHarvestDate, now, null, start, batchSize);
+            logList = mNode.getLogRecords(session, fromDate, toDate, null, start, batchSize);
             // if objectList is null or the count is 0 or the list is empty, then
             // there is nothing to process
             if (!((logList == null)

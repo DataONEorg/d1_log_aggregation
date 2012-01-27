@@ -142,29 +142,34 @@
         <dependency>
             <groupId>org.quartz-scheduler</groupId>
             <artifactId>quartz</artifactId>
-            <version>2.1.1</version>
+            <version>2.1.2</version>
         </dependency>
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast</artifactId>
-            <version>1.9.4.4</version>
+            <version>1.9.4.5</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast-spring</artifactId>
-            <version>1.9.4.4</version>
+            <version>1.9.4.5</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.solr</groupId>
+            <artifactId>solr-core</artifactId>
+            <version>3.4.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.solr</groupId>
             <artifactId>solr-solrj</artifactId>
-            <version>3.5.0</version>
+            <version>3.4.0</version>
         </dependency>
         <dependency>
             <groupId>org.dataone</groupId>
             <artifactId>d1_libclient_java</artifactId>
-            <version>1.0.1-SNAPSHOT</version>
+            <version>1.0.1-RC1</version>
             <type>jar</type>
         </dependency>
         <dependency>

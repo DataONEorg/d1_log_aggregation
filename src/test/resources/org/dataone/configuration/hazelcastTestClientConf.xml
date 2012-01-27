@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hazelcast xsi:schemaLocation="http://www.hazelcast.com/schema/config hazelcast-
+basic.xsd"
+  xmlns="http://www.hazelcast.com/schema/config"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <!--
+      Temporary until the hzNodes moves to metacat.  this is only used
+      to configure Node controller to talk with hzNodes
+    -->
+  <group>
+    <name>unitTestLogAggregation</name>
+    <password>dataone</password>
+  </group>
+
+  <network>
+    <port auto-increment="true">5732</port>
+    <join>
+      <multicast enabled="false">
+        <multicast-group>224.2.2.3</multicast-group>
+        <multicast-port>54327</multicast-port>
+      </multicast>
+      <tcp-ip enabled="true">
+        <interface>127.0.0.1</interface>
+      </tcp-ip>
+    </join>
+    </network>
+
+  <map name="hzNodes">
+
+    <backup-count>0</backup-count>
+
+    <eviction-policy>NONE</eviction-policy>
+
+    <max-size policy="cluster_wide_map_size">0</max-size>
+
+    <eviction-percentage>25</eviction-percentage>
+
+    <merge-policy>hz.LATEST_UPDATE</merge-policy>
+
+  </map>
+
+  <topic name="hzLogEntryTopic" />
+
+</hazelcast>
+

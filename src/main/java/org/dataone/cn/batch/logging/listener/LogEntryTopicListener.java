@@ -6,7 +6,6 @@
 package org.dataone.cn.batch.logging.listener;
 
 import com.hazelcast.core.ITopic;
-import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.MessageListener;
 import org.dataone.service.types.v1.LogEntry;
@@ -23,35 +22,46 @@ import org.dataone.configuration.Settings;
 public class LogEntryTopicListener implements MessageListener<LogEntry> {
 
     private HazelcastInstance hazelcast;
+
+    // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
+    // It is injected via Spring
     private BlockingQueue<LogEntry> indexLogEntryQueue;
     Logger logger = Logger.getLogger(LogEntryTopicListener.class.getName());
-        SimpleDateFormat format =
+    private static SimpleDateFormat format =
                 new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
-    public LogEntryTopicListener() {
-        this.hazelcast = Hazelcast.getDefaultInstance();
-    }
+
 
     public void init() {
-        ITopic topic = Hazelcast.getTopic(hzLogEntryTopicName);
+        logger.info("Starting LogEntryTopicListener");
+        ITopic topic = hazelcast.getTopic(hzLogEntryTopicName);
         topic.addMessageListener(this);
     }
     
     @Override
     public void onMessage(LogEntry e) {
         try {
+            logger.debug("offering " + e.getEntryId());
             indexLogEntryQueue.offer(e, 30L, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
-            logger.error(e.getNodeIdentifier().getValue() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+            logger.error("Unable to offer " + e.getNodeIdentifier().getValue() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
         }
     }
 
-    public BlockingQueue<LogEntry> getIndexLogEntryQueue() {
+    public BlockingQueue getIndexLogEntryQueue() {
         return indexLogEntryQueue;
     }
 
-    public void setIndexLogEntryQueue(BlockingQueue<LogEntry> indexLogEntryQueue) {
+    public void setIndexLogEntryQueue(BlockingQueue indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
+    }
+
+    public  HazelcastInstance getHazelcast() {
+        return hazelcast;
+    }
+
+    public  void setHazelcast(HazelcastInstance hazelcast) {
+         this.hazelcast = hazelcast;
     }
 
 }
