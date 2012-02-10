@@ -5,30 +5,20 @@
 package org.dataone.cn.batch.logging.tasks;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.dataone.service.types.v1.LogEntry;
-import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.request.AbstractUpdateRequest.ACTION;
-import org.apache.solr.client.solrj.request.UpdateRequest;
 
 /**
- * Reads from the LogEvent tasks that need to be indexed.
+ * Indexes a list of LogEntrySolrItems
  *
- * Keeps track of the number of tasks that have been published
- * by use on an internal queue. When the queue is 'full' or after an
- * established wait period, deliver the contents of the queue to the index
+ * Using SolrServer as an argument makes it easier to test
  *
- * It runs as a daemon thread by the LogEntryIndexExecutor, and
- * is run as an eternal loop unless an exception is thrown.
+ * It runs as a daemon thread by the LogEntryQueueTask, and
+ * is controlled by a thread pool executor
  *
  *
  * @author waltz

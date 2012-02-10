@@ -5,6 +5,7 @@
 
 package org.dataone.cn.batch.logging.type;
 
+import java.io.Serializable;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.service.types.v1.LogEntry;
 import java.util.Date;
@@ -12,38 +13,42 @@ import java.util.Date;
  *
  * @author waltz
  */
-public class LogEntrySolrItem {
+public class LogEntrySolrItem implements Serializable {
 
     @Field("id")
-    private String id;
+    String id;
 
     @Field("dateAggregated")
-    private Date dateAggregated;
+    Date dateAggregated;
 
     @Field("entryId")
-    private String entryId;
+    String entryId;
 
     @Field("pid")
-    private String pid;
+    String pid;
 
     @Field("ipAddress")
-    private String ipAddress;
+    String ipAddress;
 
     @Field("userAgent")
-    private String userAgent;
+    String userAgent;
 
     @Field("subject")
-    private String subject;
+    String subject;
 
     @Field("event")
-    private String event;
+    String event;
 
     @Field("dateLogged")
-    private Date dateLogged;
+    Date dateLogged;
 
     @Field("nodeId")
-    private String nodeIdentifier;
+    String nodeIdentifier;
 
+    public LogEntrySolrItem() {
+
+    }
+    
     public LogEntrySolrItem(LogEntry item) {
         this.entryId = item.getEntryId();
         this.pid = item.getIdentifier().getValue();
@@ -60,9 +65,82 @@ public class LogEntrySolrItem {
         this.id = id;
     }
 
+    public String getId() {
+        return id;
+    }
+
     public void setDateAggregated(Date dateAggregated) {
         this.dateAggregated = dateAggregated;
     }
+
+    public Date getDateAggregated() {
+        return dateAggregated;
+    }
+
+    public Date getDateLogged() {
+        return dateLogged;
+    }
+
+    public void setDateLogged(Date dateLogged) {
+        this.dateLogged = dateLogged;
+    }
+
+    public String getEntryId() {
+        return entryId;
+    }
+
+    public void setEntryId(String entryId) {
+        this.entryId = entryId;
+    }
+
+    public String getEvent() {
+        return event;
+    }
+
+    public void setEvent(String event) {
+        this.event = event;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public void setIpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
+    }
+
+    public String getNodeIdentifier() {
+        return nodeIdentifier;
+    }
+
+    public void setNodeIdentifier(String nodeIdentifier) {
+        this.nodeIdentifier = nodeIdentifier;
+    }
+
+    public String getPid() {
+        return pid;
+    }
+
+    public void setPid(String pid) {
+        this.pid = pid;
+    }
+
+    public String getSubject() {
+        return subject;
+    }
+
+    public void setSubject(String subject) {
+        this.subject = subject;
+    }
+
+    public String getUserAgent() {
+        return userAgent;
+    }
+
+    public void setUserAgent(String userAgent) {
+        this.userAgent = userAgent;
+    }
+
 
 
 }

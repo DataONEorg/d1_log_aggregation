@@ -57,13 +57,13 @@
         <property name="waitForTasksToCompleteOnShutdown" value="true" />
     </bean>
 
-    <bean id="httpSolrServer" class="org.dataone.cn.solr.client.solrj.MockSolrServer" />
+    <bean id="localhostSolrServer" class="org.dataone.cn.solr.client.solrj.MockSolrServer" />
     
     <bean id="logEntryQueueTask" class="org.dataone.cn.batch.logging.tasks.LogEntryQueueTask" init-method="init">
         <property name="hazelcast" ref="hazelcastInstance" />
         <property name="taskExecutor" ref="logIndexingThreadPoolTaskExecutor" />
         <property name="indexLogEntryQueue" ref="indexLogEntryQueue" />
-        <property name="httpSolrServer" ref="httpSolrServer" />
+        <property name="localhostSolrServer" ref="localhostSolrServer" />
         <property name="pollingQueueTimeout" value="1" />
     </bean>
 

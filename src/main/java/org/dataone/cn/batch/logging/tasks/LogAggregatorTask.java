@@ -4,6 +4,7 @@
  */
 package org.dataone.cn.batch.logging.tasks;
 
+import com.hazelcast.core.AtomicNumber;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.ITopic;
@@ -15,6 +16,8 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
+import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
+import org.dataone.cn.ldap.NodeAccess;
 
 import org.dataone.configuration.Settings;
 import org.dataone.service.cn.impl.v1.NodeRegistryService;
@@ -35,13 +38,12 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.MutableDateTime;
 
 /**
- * An executable task that retrieve a list of ObjectInfos
- * by calling listObject on a MN  and then submits them on
- * the SyncTaskQueue for processing. It will retrieve and submit
+ * A distributable and executable task that retrieves a list of LogEntry
+ * by calling log on a MN (or localhost cn)  and then publishes them on
+ * the LogEntryTopic for processing. It will retrieve and submit
  * in batches of 1000 as the default.
  *
- * As an executable, it will return a date that is the latest DateSysMetadataModified
- * of the processed nodelist
+ * As an executable, it will return a date that is the latest LogLastAggregated
  *
  * If the retrieve method fails for any reason in the middle of aggregation
  * then the records on MN may become out of sync with those reported by the MN
@@ -57,7 +59,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     Integer batchSize;
 
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
-
+    private static AtomicNumber hzAtomicNumber;
+    private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
     public LogAggregatorTask(NodeReference d1NodeReference, Integer batchSize) {
         this.d1NodeReference = d1NodeReference;
         this.batchSize = batchSize;
@@ -68,21 +71,26 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
         // midnight of the current date is the latest date until which we wish to retrieve data
         DateTime midnight = new DateTime(DateTimeZone.UTC);
+        // for testing
+//        midnight.minusMinutes(2);
         midnight = midnight.withTime(0, 0, 0, 0);
+
         // we are going to write directly to ldap for the LogLastAggregated
         // because we do not want hazelcast to spam us about
         // all of these updates since we have a listener in HarvestSchedulingManager
         // that determines when updates/additions have occured and 
         // re-adjusts scheduling
         NodeRegistryService nodeRegistryService = new NodeRegistryService();
+        NodeAccess nodeAccess = new NodeAccess();
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         logger.debug("called LogAggregatorTask");
         HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
-        ITopic<LogEntry> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
+        ITopic<LogEntrySolrItem> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
         // Need the LinkedHashMap to preserver insertion order
         Node d1Node = nodeRegistryService.getNode(d1NodeReference);
-        Date lastMofidiedDate = nodeRegistryService.getLogLastAggregated(d1NodeReference);
+        Date lastMofidiedDate = nodeAccess.getLogLastAggregated(d1NodeReference);
+        hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
         if (lastMofidiedDate == null) {
             lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
         }
@@ -102,7 +110,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     if (logEntry.getDateLogged().after(lastLoggedDate)) {
                         lastLoggedDate = logEntry.getDateLogged();
                     }
-                    hzLogEntryTopic.publish(logEntry);
+                    Date now = new Date();
+                    LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
+                    solrItem.setDateAggregated(now);
+                    Long integral = new Long(now.getTime());
+                    Long decimal = new Long(hzAtomicNumber.incrementAndGet());
+                    String id = integral.toString() + "." + decimal.toString();
+                    solrItem.setId(id);
+                    hzLogEntryTopic.publish(solrItem);
                     logger.debug("published " + logEntry.getEntryId());
                     // Simple way to throttle publishing of messages
                     // thread should sleep of 250MS
@@ -115,7 +130,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         } while ((readQueue != null) && (!readQueue.isEmpty()));
 
         if (lastLoggedDate.after(lastMofidiedDate)) {
-            nodeRegistryService.setLogLastAggregated(d1NodeReference, lastLoggedDate);
+            nodeAccess.setLogLastAggregated(d1NodeReference, lastLoggedDate);
         }
 
         // return the date of completion of the task

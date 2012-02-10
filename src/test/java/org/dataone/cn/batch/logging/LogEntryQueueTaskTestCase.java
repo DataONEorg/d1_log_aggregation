@@ -4,6 +4,7 @@
  */
 
 package org.dataone.cn.batch.logging;
+import java.util.Date;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.List;
 import org.dataone.cn.solr.client.solrj.MockSolrServer;
@@ -46,7 +47,7 @@ import static org.junit.Assert.*;
 @ContextConfiguration(locations = {"classpath:/org/dataone/configuration/logEntryQueueTaskContext.xml"})
 public class LogEntryQueueTaskTestCase {
 
-    private BlockingQueue<LogEntry> indexLogEntryQueue;
+    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
 
     private HazelcastInstance hzInstance;
@@ -57,7 +58,7 @@ public class LogEntryQueueTaskTestCase {
 
     private MockSolrServer httpSolrServer;
     @Resource
-    public void setIndexLogEntryQueue(BlockingQueue<LogEntry> indexLogEntryQueue) {
+    public void setIndexLogEntryQueue(BlockingQueue<LogEntrySolrItem> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
@@ -85,7 +86,14 @@ public class LogEntryQueueTaskTestCase {
     public void init() {
         try {
             LogEntry logEntryItem = TypeMarshaller.unmarshalTypeFromStream(LogEntry.class, logEntryItemResource.getInputStream());
-            indexLogEntryQueue.offer(logEntryItem, 500L, TimeUnit.MILLISECONDS);
+                    LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntryItem);
+                    Date now = new Date();
+                    solrItem.setDateAggregated(now);
+                    Long integral = new Long(now.getTime());
+                    Long decimal = new Long(10000L);
+                    String id = integral.toString() + "." + decimal.toString();
+                    solrItem.setId(id);
+            indexLogEntryQueue.offer(solrItem, 500L, TimeUnit.MILLISECONDS);
         } catch (IOException ex) {
             ex.printStackTrace();
         } catch (InstantiationException ex) {
