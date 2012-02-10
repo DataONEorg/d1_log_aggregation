@@ -91,7 +91,7 @@ public class LogAggregationHarvestJob implements Job {
                 } else {
                     // Distribute the task to any hazelcast process cluster instance
                     DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
-                    ExecutorService executor = Hazelcast.getExecutorService();
+                    ExecutorService executor = hazelcast.getExecutorService();
                     future = executor.submit(dtask);
                 }
                 Date lastProcessingCompletedDate = null;

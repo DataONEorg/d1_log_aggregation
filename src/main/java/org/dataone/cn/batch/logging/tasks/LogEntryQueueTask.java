@@ -47,20 +47,16 @@ public class LogEntryQueueTask implements Callable {
     private ThreadPoolTaskExecutor taskExecutor;
     // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<LogEntry> indexLogEntryQueue;
+    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
     SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     private Integer maxIndexBufferSize = new Integer(1000);
-    private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
     // Manage this class.  Init will spawn off sequential threads of this class
     // and will do so until an exception is raised.
-    private static AtomicNumber hzAtomicNumber;
     private HazelcastInstance hazelcast;
-    SolrServer httpSolrServer = null;
+    SolrServer localhostSolrServer = null;
     long pollingQueueTimeout = 60L;
     
     public void init() {
-
-        hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
 
 //        try {
 //             CommonsHttpSolrServer httpsolrServer = new CommonsHttpSolrServer(solrUrl);
@@ -85,15 +81,9 @@ public class LogEntryQueueTask implements Callable {
 
         logger.info("Starting LogEntryQueueTask");
 
-        LogEntry indexLogTask = null;
+        LogEntrySolrItem indexLogTask = null;
         List<LogEntrySolrItem> logEntryBuffer = new ArrayList<LogEntrySolrItem>();
         // the futures map is helpful in tracking the state of a LogEntryIndexTask
-        // nodecomm is need in order determine how long the comm channels have been running
-        // and unavailable for use by any other task.
-        // If the task has been running for over an hour, it is considered blocking and will
-        // be terminated.  Once the task is terminated, the membernode will need to be
-        // informed of the synchronization failure. Hence, the
-        // futures map will also hold the SyncObject submitted to the TransferObjectTask
 
         Map<Future, List<LogEntrySolrItem>> futuresMap = new HashMap<Future, List<LogEntrySolrItem>>();
         do {
@@ -154,15 +144,9 @@ public class LogEntryQueueTask implements Callable {
                     executeLogIndexTask(futuresMap, logEntryBuffer);
                 }
             } else {
-                logger.debug("found indexLogTask " + indexLogTask.getNodeIdentifier().getValue() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject().getValue() + ":" + indexLogTask.getEvent());
-                LogEntrySolrItem solrItem = new LogEntrySolrItem(indexLogTask);
-                Date now = new Date();
-                solrItem.setDateAggregated(now);
-                Long integral = new Long(now.getTime());
-                Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                String id = integral.toString() + "." + decimal.toString();
-                solrItem.setId(id);
-                logEntryBuffer.add(solrItem);
+                logger.debug("found indexLogTask " + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
+
+                logEntryBuffer.add(indexLogTask);
                 if (logEntryBuffer.size() >= maxIndexBufferSize) {
                     executeLogIndexTask(futuresMap, logEntryBuffer);
                 }
@@ -189,7 +173,7 @@ public class LogEntryQueueTask implements Callable {
         if ((taskExecutor.getPoolSize() + 1) < taskExecutor.getMaxPoolSize()) {
             List<LogEntrySolrItem> indexLogEntryBuffer = new ArrayList<LogEntrySolrItem>();
             indexLogEntryBuffer.addAll(logEntryBuffer);
-            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(httpSolrServer, indexLogEntryBuffer);
+            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(localhostSolrServer, indexLogEntryBuffer);
             FutureTask futureTask = new FutureTask(logEntryIndexTask);
             taskExecutor.execute(futureTask);
             futuresMap.put(futureTask, indexLogEntryBuffer);
@@ -229,12 +213,12 @@ public class LogEntryQueueTask implements Callable {
         this.hazelcast = hazelcast;
     }
 
-    public SolrServer getHttpSolrServer() {
-        return httpSolrServer;
+    public SolrServer getLocalhostSolrServer() {
+        return localhostSolrServer;
     }
 
-    public void setHttpSolrServer(SolrServer httpSolrServer) {
-        this.httpSolrServer = httpSolrServer;
+    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
+        this.localhostSolrServer = localhostSolrServer;
     }
 
     public long getPollingQueueTimeout() {

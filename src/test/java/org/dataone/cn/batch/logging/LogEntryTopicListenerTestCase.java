@@ -4,6 +4,7 @@
  */
 package org.dataone.cn.batch.logging;
 
+import java.util.Date;
 import com.hazelcast.core.ITopic;
 import org.dataone.configuration.Settings;
 import com.hazelcast.core.HazelcastInstance;
@@ -31,12 +32,12 @@ import static org.junit.Assert.*;
 @ContextConfiguration(locations = {"classpath:/org/dataone/configuration/logEntryTopicListenerContext.xml"})
 public class LogEntryTopicListenerTestCase {
 
-    private BlockingQueue<LogEntry> indexLogEntryQueue;
+    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
 
     private HazelcastInstance hzInstance;
     @Resource
-    public void setIndexLogEntryQueue(BlockingQueue<LogEntry> indexLogEntryQueue) {
+    public void setIndexLogEntryQueue(BlockingQueue<LogEntrySolrItem> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
@@ -53,9 +54,15 @@ public class LogEntryTopicListenerTestCase {
 
         try {
             LogEntry logEntryItem = TypeMarshaller.unmarshalTypeFromStream(LogEntry.class, logEntryItemResource.getInputStream());
-            
-            ITopic<LogEntry> topic = hzInstance.getTopic(Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic"));
-            topic.publish(logEntryItem);
+                    LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntryItem);
+                    Date now = new Date();
+                    solrItem.setDateAggregated(now);
+                    Long integral = new Long(now.getTime());
+                    Long decimal = new Long(10000L);
+                    String id = integral.toString() + "." + decimal.toString();
+                    solrItem.setId(id);
+            ITopic<LogEntrySolrItem> topic = hzInstance.getTopic(Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic"));
+            topic.publish(solrItem);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -64,7 +71,7 @@ public class LogEntryTopicListenerTestCase {
 
     @Test
     public void getLogEntryItem() {
-        LogEntry logEntry = null;
+        LogEntrySolrItem logEntry = null;
         try {
             logEntry = indexLogEntryQueue.poll(500L, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {

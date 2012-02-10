@@ -45,7 +45,7 @@
         <constructor-arg index="1"  value="true" />
     </bean>
     
-    <bean id="logEntryTopicListener" class="org.dataone.cn.batch.logging.listener.LogEntryTopicListener" init-method="init">
+    <bean id="logEntryTopicListener" class="org.dataone.cn.batch.logging.listener.LogEntryTopicListener" init-method="addListener">
         <property name="hazelcast" ref="hazelcastInstance" />
         <property name="indexLogEntryQueue" ref="indexLogEntryQueue" />
     </bean>

@@ -13,38 +13,39 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.text.SimpleDateFormat;
 import org.apache.log4j.Logger;
+import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
 /**
  *
  * @author waltz
  * 
  */
-public class LogEntryTopicListener implements MessageListener<LogEntry> {
+public class LogEntryTopicListener implements MessageListener<LogEntrySolrItem> {
 
     private HazelcastInstance hazelcast;
 
     // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<LogEntry> indexLogEntryQueue;
+    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
     Logger logger = Logger.getLogger(LogEntryTopicListener.class.getName());
     private static SimpleDateFormat format =
                 new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
 
 
-    public void init() {
+    public void addListener() {
         logger.info("Starting LogEntryTopicListener");
         ITopic topic = hazelcast.getTopic(hzLogEntryTopicName);
         topic.addMessageListener(this);
     }
     
     @Override
-    public void onMessage(LogEntry e) {
+    public void onMessage(LogEntrySolrItem e) {
         try {
             logger.debug("offering " + e.getEntryId());
             indexLogEntryQueue.offer(e, 30L, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
-            logger.error("Unable to offer " + e.getNodeIdentifier().getValue() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+            logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
         }
     }
 
