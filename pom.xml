@@ -5,7 +5,7 @@
     <artifactId>d1_log_aggregation</artifactId>
     <packaging>jar</packaging>
     <name>DataONE_Log_Aggregation</name>
-    <version>1.0.0-RC1</version>
+    <version>1.0.0-RC2-SNAPSHOT</version>
     <description>Cn DataONE Logging Aggregation</description>
     <url>http://dataone.org</url>
     <properties>
@@ -185,13 +185,13 @@
         <dependency>
             <groupId>org.dataone</groupId>
             <artifactId>d1_libclient_java</artifactId>
-            <version>1.0.1-RC2</version>
+            <version>1.0.1-RC3-SNAPSHOT</version>
             <type>jar</type>
         </dependency>
         <dependency>
             <groupId>org.dataone</groupId>
             <artifactId>d1_cn_noderegistry</artifactId>
-            <version>1.0.0-RC1</version>
+            <version>1.0.0-RC2-SNAPSHOT</version>
             <type>jar</type>
         </dependency>
     </dependencies>
