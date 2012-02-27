@@ -91,84 +91,86 @@ public class LogAggregationRecoverJob implements Job {
                 for (NodeReference cnReference : recoveryMap.keySet()) {
                     if (!cnReference.equals(localNodeReference)) {
                         Map<String, String> cnMap = recoveryMap.get(cnReference);
-                        Node d1Node = nodeRegistryService.getNode(cnReference);
-                        String baseUrl = d1Node.getBaseURL();
-                        logger.debug("found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.ProcessingStateAttribute));
-                        ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.ProcessingStateAttribute));
-                        switch (logProcessingState) {
-                            case Active: {
-                                // So it is true, a CN is running logAggregation
-                                // this localhost has never run before, but another CN is running
-                                // we need to replicate all logs from other CN to this one
+                        if ((cnMap != null) && !cnMap.isEmpty()) {
+                            Node d1Node = nodeRegistryService.getNode(cnReference);
+                            String baseUrl = d1Node.getBaseURL();
+                            logger.debug("found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.ProcessingStateAttribute));
+                            ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.ProcessingStateAttribute));
+                            switch (logProcessingState) {
+                                case Active: {
+                                    // So it is true, a CN is running logAggregation
+                                    // this localhost has never run before, but another CN is running
+                                    // we need to replicate all logs from other CN to this one
 
-                                recoveryCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
-                                recoveryCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-                                // a machine may reportedly be active, but it actually offline becuase of a
-                                // system failure. Check to make certain that the system is really active
-                                // ping the damn thing to make certain it responds before we break!
-                                CNode cnode = new CNode(baseUrl);
-                                try {
-                                    cnode.ping();
-                                } catch (Exception e) {
-                                    // not active, node is down
-                                    recoveryCnUrl = null;
-                                }
-
-                                break;
-                            }
-                            case Recovery: {
-                                // Don't bother with this logic if an Active CN has been found
-                                if (recoveryCnUrl == null) {
-                                    // a machine may reportedly be active, but it is actually offline because of a
-                                    // system failure. Check to make certain that the system is indeed online
-                                    // ping it
+                                    recoveryCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
+                                    recoveryCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+                                    // a machine may reportedly be active, but it actually offline becuase of a
+                                    // system failure. Check to make certain that the system is really active
+                                    // ping the damn thing to make certain it responds before we break!
                                     CNode cnode = new CNode(baseUrl);
                                     try {
                                         cnode.ping();
-                                        String recoveringCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
-                                        recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-
-                                        CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
-                                        recoveringSolrServer.setConnectionTimeout(30000);
-                                        recoveringSolrServer.setSoTimeout(30000);
-                                        recoveringSolrServer.setMaxRetries(1);
-                                        // initialize it incase the node in recovery has an empty logEntryList
-                                        Date cnRecoveryDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
-                                        SolrQuery queryParams = new SolrQuery();
-                                        queryParams.setQuery("dateAggregated:[* TO NOW]");
-                                        queryParams.setSortField("dateAggregated", SolrQuery.ORDER.desc);
-                                        queryParams.setStart(0);
-                                        queryParams.setRows(1);
-                                        // get the last date that the recoverying node knows about
-                                        QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
-                                        List<LogEntrySolrItem> logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
-                                        if (!logEntryList.isEmpty()) {
-                                            // there should only be one
-                                            LogEntrySolrItem firstSolrItem = logEntryList.get(0);
-                                            DateTime dt = new DateTime(firstSolrItem.getDateAggregated());
-
-                                            DateTime dtUTC = dt.withZone(DateTimeZone.UTC);
-                                            cnRecoveryDate = dtUTC.toDate();
-
-                                        }
-                                        logger.debug("May recover from " + recoveringCnUrl + " from date " + format.format(cnRecoveryDate) + " if it is after " + format.format(latestRecoverableDate));
-                                        // One of the nodes is actively being recovered
-                                        // make certain that the last time the other CN ran
-                                        // is after the date when this cn last ran
-                                        // if all CN's are in recovery, then the one with the
-                                        // latest date should not attempt recovery from the others
-
-                                        if (cnRecoveryDate.after(latestRecoverableDate)) {
-                                            foundRecoveringNode = true;
-                                            logger.debug("Found Recovering Node");
-                                        }
                                     } catch (Exception e) {
-                                        e.printStackTrace();
                                         // not active, node is down
-                                        logger.error("Node must be down " + e.getMessage());
-                                        foundRecoveringNode = false;
+                                        recoveryCnUrl = null;
                                     }
 
+                                    break;
+                                }
+                                case Recovery: {
+                                    // Don't bother with this logic if an Active CN has been found
+                                    if (recoveryCnUrl == null) {
+                                        // a machine may reportedly be active, but it is actually offline because of a
+                                        // system failure. Check to make certain that the system is indeed online
+                                        // ping it
+                                        CNode cnode = new CNode(baseUrl);
+                                        try {
+                                            cnode.ping();
+                                            String recoveringCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
+                                            recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+
+                                            CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
+                                            recoveringSolrServer.setConnectionTimeout(30000);
+                                            recoveringSolrServer.setSoTimeout(30000);
+                                            recoveringSolrServer.setMaxRetries(1);
+                                            // initialize it incase the node in recovery has an empty logEntryList
+                                            Date cnRecoveryDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
+                                            SolrQuery queryParams = new SolrQuery();
+                                            queryParams.setQuery("dateAggregated:[* TO NOW]");
+                                            queryParams.setSortField("dateAggregated", SolrQuery.ORDER.desc);
+                                            queryParams.setStart(0);
+                                            queryParams.setRows(1);
+                                            // get the last date that the recoverying node knows about
+                                            QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
+                                            List<LogEntrySolrItem> logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
+                                            if (!logEntryList.isEmpty()) {
+                                                // there should only be one
+                                                LogEntrySolrItem firstSolrItem = logEntryList.get(0);
+                                                DateTime dt = new DateTime(firstSolrItem.getDateAggregated());
+
+                                                DateTime dtUTC = dt.withZone(DateTimeZone.UTC);
+                                                cnRecoveryDate = dtUTC.toDate();
+
+                                            }
+                                            logger.debug("May recover from " + recoveringCnUrl + " from date " + format.format(cnRecoveryDate) + " if it is after " + format.format(latestRecoverableDate));
+                                            // One of the nodes is actively being recovered
+                                            // make certain that the last time the other CN ran
+                                            // is after the date when this cn last ran
+                                            // if all CN's are in recovery, then the one with the
+                                            // latest date should not attempt recovery from the others
+
+                                            if (cnRecoveryDate.after(latestRecoverableDate)) {
+                                                foundRecoveringNode = true;
+                                                logger.debug("Found Recovering Node");
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            // not active, node is down
+                                            logger.error("Node must be down " + e.getMessage());
+                                            foundRecoveringNode = false;
+                                        }
+
+                                    }
                                 }
                             }
                         }

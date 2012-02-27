@@ -9,8 +9,10 @@ import java.io.Serializable;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.service.types.v1.LogEntry;
 import java.util.Date;
+import java.util.List;
 /**
- *
+ *  Allows the LogEntry domain object to be mapped to a Solr POJO
+ * 
  * @author waltz
  */
 public class LogEntrySolrItem implements Serializable {
@@ -23,6 +25,13 @@ public class LogEntrySolrItem implements Serializable {
 
     @Field("entryId")
     String entryId;
+
+    @Field("isPublic")
+    boolean isPublic = false;
+
+    // really the list of subjects that have read Permission
+    @Field("readPermission")
+    List<String> readPermission;
 
     @Field("pid")
     String pid;
@@ -139,6 +148,22 @@ public class LogEntrySolrItem implements Serializable {
 
     public void setUserAgent(String userAgent) {
         this.userAgent = userAgent;
+    }
+
+    public boolean getIsPublic() {
+        return isPublic;
+    }
+
+    public void setIsPublic(boolean isPublic) {
+        this.isPublic = isPublic;
+    }
+
+    public List<String> getReadPermission() {
+        return readPermission;
+    }
+
+    public void setReadPermission(List<String> readPermission) {
+        this.readPermission = readPermission;
     }
 
 

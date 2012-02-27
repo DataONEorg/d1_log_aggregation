@@ -7,6 +7,7 @@ package org.dataone.cn.batch.logging.tasks;
 import com.hazelcast.core.AtomicNumber;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
 
 import java.io.Serializable;
@@ -14,9 +15,11 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Callable;
+import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
+import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.cn.ldap.NodeAccess;
 
 import org.dataone.configuration.Settings;
@@ -26,12 +29,16 @@ import org.dataone.service.exceptions.InvalidToken;
 import org.dataone.service.exceptions.NotAuthorized;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
+import org.dataone.service.types.v1.AccessRule;
 import org.dataone.service.types.v1.Log;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.Node;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.NodeType;
 import org.dataone.service.types.v1.Session;
+import org.dataone.service.types.v1.Subject;
+import org.dataone.service.types.v1.SystemMetadata;
+import org.dataone.service.util.Constants;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -61,20 +68,30 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private static AtomicNumber hzAtomicNumber;
     private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
+    String hzSystemMetaMapString = Settings.getConfiguration().getString("Synchronization.hzSystemMetaMap");
     public LogAggregatorTask(NodeReference d1NodeReference, Integer batchSize) {
         this.d1NodeReference = d1NodeReference;
         this.batchSize = batchSize;
     }
 
+    /**
+     * Implement the Callable interface, providing code retrieves logging information from a D1 Node
+     *
+     * @return Date
+     * @throws Exception
+     * @author waltz
+     */
     @Override
     public Date call() throws Exception {
-
+        HazelcastInstance hzclient = HazelcastClientInstance.getHazelcastClient();
         // midnight of the current date is the latest date until which we wish to retrieve data
         DateTime midnight = new DateTime(DateTimeZone.UTC);
         // for testing
 //        midnight.minusMinutes(2);
         midnight = midnight.withTime(0, 0, 0, 0);
-
+        IMap systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
+        Subject publicSubject = new Subject();
+        publicSubject.setValue(Constants.SUBJECT_PUBLIC);
         // we are going to write directly to ldap for the LogLastAggregated
         // because we do not want hazelcast to spam us about
         // all of these updates since we have a listener in HarvestSchedulingManager
@@ -111,8 +128,34 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         lastLoggedDate = logEntry.getDateLogged();
                     }
                     Date now = new Date();
+                    SystemMetadata systemMetadata = (SystemMetadata) systemMetadataMap.get(logEntry.getIdentifier());
+                    if (systemMetadata == null) {
+                        throw new InterruptedException("SystemMetadata is null for " + logEntry.getIdentifier().getValue()  + ". It is possible that synchronization has not  yet run for this record. Try this job later");
+                    }
+                    List<String> subjectsAllowedRead = new ArrayList<String>();
                     LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
                     solrItem.setDateAggregated(now);
+                    if (systemMetadata.getAccessPolicy() != null) {
+                        List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
+
+                        for (AccessRule accessRule: allowList) {
+                            List<Subject> subjectList = accessRule.getSubjectList();
+                            for (Subject accessSubject : subjectList) {
+                                if (accessSubject.equals(publicSubject)) {
+                                    // set Public access boolean on record
+                                    solrItem.setIsPublic(true);
+                                } else {
+                                    // add subject as having read access on the record
+                                    X500Principal principal = new X500Principal(accessSubject.getValue());
+                                    String standardizedName = principal.getName(X500Principal.RFC2253);
+                                    subjectsAllowedRead.add(standardizedName);
+                                }
+                            }
+                        }
+                        logger.error("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
+                    }
+                    solrItem.setReadPermission(subjectsAllowedRead);
+                    
                     Long integral = new Long(now.getTime());
                     Long decimal = new Long(hzAtomicNumber.incrementAndGet());
                     String id = integral.toString() + "." + decimal.toString();
@@ -138,10 +181,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     }
 
     /*
-     * performs the retrieval of the nodelist from a membernode.
+     * performs the retrieval of the log records  from a DataONE node.
      * It retrieves the list in batches and should be called iteratively
-     * until all objects have been retrieved from a node.
+     * until all log entries have been retrieved from a node.
+     * 
+     * @return List<LogEntry>
+     * @author waltz
      */
+
     private List<LogEntry> retrieve(String mnUrl, Date fromDate, Date toDate) {
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());

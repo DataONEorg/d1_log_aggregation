@@ -33,6 +33,14 @@ public class LogEntryIndexTask implements Callable<String> {
         this.indexLogEntryBuffer = indexLogEntryBuffer;
         this.solrServer = solrServer;
     }
+    /**
+     *  Implement the Callable interface, providing code to store LogEntry information
+     *  in Solr
+     *
+     *
+     * @return String
+     * @author waltz
+     */
     @Override
     public String call() {
 
@@ -51,11 +59,23 @@ public class LogEntryIndexTask implements Callable<String> {
         return "Done";
     }
 
-
+    /**
+     *  Get the SolrServer used in interactions
+     *
+     *
+     * @return SolrServer
+     * @author waltz
+     */
     public SolrServer getServer() {
         return solrServer;
     }
 
+    /**
+     *  Set the SolrServer to be used in interactions
+     *
+     * @return String
+     * @author waltz
+     */
     public void setServer(SolrServer solrServer) {
         this.solrServer = solrServer;
     }
