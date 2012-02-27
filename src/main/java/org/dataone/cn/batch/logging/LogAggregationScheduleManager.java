@@ -70,13 +70,10 @@ import static org.quartz.JobBuilder.*;
  * this bean must be managed by Spring
  * upon startup of spring it will execute via init method
  * 
- * evaluate whether the NodeList contains nodes that should be executed on the
- * executing coordinating node. it will add  or remove triggers for jobs based on
+ * evaluate whether the NodeList contains nodes that should be harvested for logs on the
+ * executing coordinating node. It will add  or remove triggers for jobs based on
  * events, such as startup, nightly refactoring, more CNs coming online
  *
- * todo: add in nightly job that re-calcuates jobs
- *       add in listeners that will,under certain conditions, add a job to call manager
- *       added jobs that call the manager should retrieve the manager from spring context
  * 
  * @author waltz
  */
