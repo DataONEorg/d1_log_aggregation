@@ -5,7 +5,7 @@
     <artifactId>d1_log_aggregation</artifactId>
     <packaging>jar</packaging>
     <name>DataONE_Log_Aggregation</name>
-    <version>1.0.0-RC2-SNAPSHOT</version>
+    <version>1.0.0-RC2</version>
     <description>Cn DataONE Logging Aggregation</description>
     <url>http://dataone.org</url>
     <properties>
@@ -14,8 +14,8 @@
         <quartz.version>2.1.3</quartz.version>
         <solr.version>3.4.0</solr.version>
         <hazelcast.version>1.9.4.6</hazelcast.version>
-        <d1_libclient_version>1.0.1-RC3-SNAPSHOT</d1_libclient_version>
-        <d1_cn_noderegistry_version>1.0.0-RC2-SNAPSHOT</d1_cn_noderegistry_version>
+        <d1_libclient_version>1.0.1-RC3</d1_libclient_version>
+        <d1_cn_noderegistry_version>1.0.0-RC2</d1_cn_noderegistry_version>
     </properties>
     <build>
         <plugins>
