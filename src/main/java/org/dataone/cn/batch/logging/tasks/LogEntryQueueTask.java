@@ -57,23 +57,7 @@ public class LogEntryQueueTask implements Callable {
     long pollingQueueTimeout = 60L;
     
     public void init() {
-
-//        try {
-//             CommonsHttpSolrServer httpsolrServer = new CommonsHttpSolrServer(solrUrl);
-//            httpsolrServer.setSoTimeout(30000);  // socket read timeout
-//            httpsolrServer.setConnectionTimeout(30000);
-//            httpsolrServer.setMaxRetries(1);
-//    File home = new File( "/path/to/solr/home" );
-//    File f = new File( home, "solr.xml" );
-//    CoreContainer container = new CoreContainer();
-//    container.load( "/path/to/solr/home", f );
-
-//    EmbeddedSolrServer server = new EmbeddedSolrServer( container, "core name as defined in solr.xml" );
-//        solrServer = httpsolrServer;
-//        } catch (MalformedURLException ex) {
-//            throw new RuntimeException(ex.getMessage());
-//        }
-
+        logger.info("Initializing LogEntryQueueTask");
     }
 
     @Override
@@ -152,7 +136,7 @@ public class LogEntryQueueTask implements Callable {
                 }
             }
 
-            logger.info("ActiveCount: " + taskExecutor.getActiveCount() + " Pool size " + taskExecutor.getPoolSize() + " Max Pool Size " + taskExecutor.getMaxPoolSize());
+            logger.debug("ActiveCount: " + taskExecutor.getActiveCount() + " Pool size " + taskExecutor.getPoolSize() + " Max Pool Size " + taskExecutor.getMaxPoolSize());
             if ((taskExecutor.getPoolSize() + 5) > taskExecutor.getMaxPoolSize()) {
                 if ((taskExecutor.getPoolSize() == taskExecutor.getMaxPoolSize()) && futuresMap.isEmpty()) {
                     BlockingQueue<Runnable> blockingTaskQueue = taskExecutor.getThreadPoolExecutor().getQueue();

@@ -133,6 +133,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         throw new InterruptedException("SystemMetadata is null for " + logEntry.getIdentifier().getValue()  + ". It is possible that synchronization has not  yet run for this record. Try this job later");
                     }
                     List<String> subjectsAllowedRead = new ArrayList<String>();
+                    // RightsHolder always has read permission
+                    // even if SystemMetadata does not have an AccessPolicy
+                    Subject rightsHolder =  systemMetadata.getRightsHolder();
+                    if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
+                        X500Principal principal = new X500Principal(rightsHolder.getValue());
+                        String standardizedName = principal.getName(X500Principal.RFC2253);
+                        subjectsAllowedRead.add(standardizedName);
+                    }
                     LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
                     solrItem.setDateAggregated(now);
                     if (systemMetadata.getAccessPolicy() != null) {
@@ -152,7 +160,9 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                 }
                             }
                         }
-                        logger.error("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
+                       
+                    } else {
+                         logger.warn("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
                     }
                     solrItem.setReadPermission(subjectsAllowedRead);
                     

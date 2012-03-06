@@ -92,15 +92,27 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     Member localMember;
     private SolrServer localhostSolrServer;
     private LogEntryTopicListener logEntryTopicListener;
-    private static SimpleScheduleBuilder simpleTriggerSchedule = simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow();
-//    private static SimpleScheduleBuilder simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(2).repeatForever().withMisfireHandlingInstructionFireNow();
-    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
+    private static SimpleScheduleBuilder simpleTriggerSchedule = null;
+    //
+    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(2).withMisfireHandlingInstructionFireNow();
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
-
+    static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes");
+    static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes");
     public void init() {
         try {
+            int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
+            String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
+            if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
+                simpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+            } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
+                simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+            } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
+                 simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+            } else {
+                simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow();
+            }
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
             partitionService = Hazelcast.getPartitionService();
@@ -138,7 +150,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
 
     public void manageHarvest() throws SchedulerException {
         DateTime startTime = new DateTime();
-        startTime = startTime.plusSeconds(90);
+        // delay the startTime to allow all processing to startup and
+        // come to some kind of steady state... might not be possible
+        // to predict, but it should be minimally 5-10 minutes
+        startTime = startTime.plusMinutes(delayStartOffset);
         // halt all operations
         if (scheduler.isStarted()) {
             scheduler.standby();
@@ -154,7 +169,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             Set<JobKey> jobsInGroup = scheduler.getJobKeys(groupMatcher);
 
             for (JobKey jobKey : jobsInGroup) {
-                logger.debug("deleting job " + jobKey.getGroup() + " " + jobKey.getName());
+                logger.info("deleting job " + jobKey.getGroup() + " " + jobKey.getName());
                 scheduler.deleteJob(jobKey);
             }
         }
@@ -167,7 +182,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         try {
             JobKey jobKey = new JobKey("job-" + localCnIdentifier, groupName);
             if (!scheduler.checkExists(jobKey)) {
-                logger.debug("scheduling job-" + localCnIdentifier + " to start at " + zFmt.print(startTime));
+                logger.info("scheduling job-" + localCnIdentifier + " to start at " + zFmt.print(startTime));
                 scheduler.scheduleJob(job, trigger);
             } else {
                 logger.error("job-" + localCnIdentifier + " exists!");
@@ -187,7 +202,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         scheduler.start();
 
         if (scheduler.isStarted()) {
-            logger.debug("Scheduler is started");
+            logger.info("Scheduler is started");
         }
 
     }
@@ -206,7 +221,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             try {
                 JobKey jobKey = new JobKey("job-" + key.getValue(), groupName);
                 if (!scheduler.checkExists(jobKey)) {
-                    logger.debug("scheduling job-" + key.getValue() + " to start at " + zFmt.print(startDate.getTime()));
+                    logger.info("scheduling job-" + key.getValue() + " to start at " + zFmt.print(startDate.getTime()));
                     scheduler.scheduleJob(job, trigger);
                 } else {
                     logger.error("job-" + key.getValue() + " exists!");
@@ -295,7 +310,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      * 
      */
     public void migrationCompleted(MigrationEvent migrationEvent) {
-        logger.warn("migrationCompleted " + migrationEvent.getPartitionId());
+        logger.info("migrationCompleted " + migrationEvent.getPartitionId());
         // this is the partition that was moved from 
         // one node to the other
         // try to determine if a Node has migrated home servers
@@ -311,6 +326,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             }
 
             if (nodePartitions.contains(partitionId)) {
+                logger.info("Node Partions migrated ");
                 try {
                     this.manageHarvest();
                 } catch (SchedulerException ex) {
@@ -321,7 +337,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
 
     public void migrationStarted(MigrationEvent migrationEvent) {
-        logger.warn("migrationStarted " + migrationEvent.getPartitionId());
+        logger.info("migrationStarted " + migrationEvent.getPartitionId());
     }
 
     /*
@@ -426,7 +442,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             // provide an offset to ensure the listener is up and running
             // it would be bad to recover before the listener is recording
             // new entries
-            startTime = startTime.plusSeconds(30);
+            startTime = startTime.plusMinutes(delayRecoveryOffset);
             JobDataMap jobDataMap = new JobDataMap();
             jobDataMap.put("recoveryQuery", recoveryQuery);
             jobDataMap.put("localhostSolrServer", localhostSolrServer);

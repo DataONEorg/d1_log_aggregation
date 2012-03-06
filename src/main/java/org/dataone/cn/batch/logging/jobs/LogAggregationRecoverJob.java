@@ -6,6 +6,8 @@
 package org.dataone.cn.batch.logging.jobs;
 
 import java.util.concurrent.Future;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dataone.configuration.Settings;
@@ -199,7 +201,7 @@ public class LogAggregationRecoverJob implements Job {
 
             Integer start = 0;
             long total = 0;
-            logger.debug("Starting recovery from " + recoveryCnUrl);
+            logger.info("Starting recovery from " + recoveryCnUrl);
             Date lastLogAggregatedDate = nodeAccess.getLogLastAggregated(localNodeReference);
             Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
             Boolean assignDate = false;
@@ -239,12 +241,12 @@ public class LogAggregationRecoverJob implements Job {
             if (assignDate) {
                 nodeAccess.setLogLastAggregated(localNodeReference, lastLogAggregatedDate);
             }
-            logger.debug("LogAggregation is fully Recovered");
+            logger.info("LogAggregation is fully Recovered");
         } catch (Exception ex) {
             ex.printStackTrace();
             logger.error(ex.getMessage());
             jex = new JobExecutionException();
-            jex.unscheduleFiringTrigger();
+            jex.refireImmediately();
 
             jex.setStackTrace(ex.getStackTrace());
         }
@@ -258,6 +260,13 @@ public class LogAggregationRecoverJob implements Job {
         }
 
         if (jex != null) {
+            try {
+                // Want this to refire  after this thread ends, but after some delay
+                // lets wait 1/2 hr
+                Thread.sleep(1800000L);
+            } catch (InterruptedException ex) {
+               logger.warn("Tried to sleep before recovery job refires. But Interrupted :" + ex.getMessage());
+            }
             throw jex;
         }
     }
