@@ -93,8 +93,8 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     private SolrServer localhostSolrServer;
     private LogEntryTopicListener logEntryTopicListener;
     private static SimpleScheduleBuilder simpleTriggerSchedule = null;
-    //
-    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(2).withMisfireHandlingInstructionFireNow();
+
+    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
@@ -472,7 +472,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             try {
                 scheduler.scheduleJob(job, trigger);
             } catch (SchedulerException ex) {
-                logger.error("Unable to initialize job key " + localCnIdentifier + " for daily scheduling: ", ex);
+                logger.error("Unable to initialize job key " + localCnIdentifier + " for Job Recovery scheduling: ", ex);
             }
         } else {
             logger.debug("Processing is now Active");
