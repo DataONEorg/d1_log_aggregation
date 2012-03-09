@@ -47,7 +47,7 @@ public class LogEntryQueueTask implements Callable {
     private ThreadPoolTaskExecutor taskExecutor;
     // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     private Integer maxIndexBufferSize = new Integer(1000);
     // Manage this class.  Init will spawn off sequential threads of this class
@@ -65,21 +65,21 @@ public class LogEntryQueueTask implements Callable {
 
         logger.info("Starting LogEntryQueueTask");
 
-        LogEntrySolrItem indexLogTask = null;
+        List<LogEntrySolrItem> indexLogTasks = null;
         List<LogEntrySolrItem> logEntryBuffer = new ArrayList<LogEntrySolrItem>();
         // the futures map is helpful in tracking the state of a LogEntryIndexTask
 
         Map<Future, List<LogEntrySolrItem>> futuresMap = new HashMap<Future, List<LogEntrySolrItem>>();
         do {
             try {
-                indexLogTask = indexLogEntryQueue.poll(pollingQueueTimeout, TimeUnit.SECONDS);
+                indexLogTasks = indexLogEntryQueue.poll(pollingQueueTimeout, TimeUnit.SECONDS);
             } catch (InterruptedException ex) {
                 // XXX this causes a nasty infinite loop of continuous failures.
                 // if poll causes an exception...
                 // probably should check for TIMEOUT exceptions
                 // and any other causes this thread to die
                 //
-                indexLogTask = null;
+                indexLogTasks = null;
                 logger.warn(ex.getMessage());
             }
             logger.info("Polled");
@@ -121,16 +121,17 @@ public class LogEntryQueueTask implements Callable {
             }
             // Do not exceed the max number of tasks
 
-            if (indexLogTask == null) {
+            if (indexLogTasks == null) {
                 // either an exception happend or a timeout occurred.
                 // either way process the buffer of tasks
                 if (!logEntryBuffer.isEmpty()) {
                     executeLogIndexTask(futuresMap, logEntryBuffer);
                 }
             } else {
-                logger.debug("found indexLogTask " + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
-
-                logEntryBuffer.add(indexLogTask);
+                for (LogEntrySolrItem indexLogTask: indexLogTasks) {
+                    logger.info("found indexLogTask " + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
+                }
+                logEntryBuffer.addAll(indexLogTasks);
                 if (logEntryBuffer.size() >= maxIndexBufferSize) {
                     executeLogIndexTask(futuresMap, logEntryBuffer);
                 }

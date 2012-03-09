@@ -4,6 +4,7 @@
  */
 package org.dataone.cn.batch.logging;
 
+import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
 import org.dataone.cn.batch.logging.listener.LogEntryTopicListener;
 import org.dataone.cn.ldap.ProcessingState;
 import org.dataone.cn.ldap.NodeAccess;
@@ -92,6 +93,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     Member localMember;
     private SolrServer localhostSolrServer;
     private LogEntryTopicListener logEntryTopicListener;
+    private SystemMetadataEntryListener systemMetadataEntryListener;
     private static SimpleScheduleBuilder simpleTriggerSchedule = null;
 
     private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
@@ -133,6 +135,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             // before the most recent log entry is retrieved from the index
 
             logEntryTopicListener.addListener();
+            systemMetadataEntryListener.start();
             this.manageHarvest();
             partitionService.addMigrationListener(this);
             IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
@@ -524,4 +527,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     public void setLogEntryTopicListener(LogEntryTopicListener logEntryTopicListener) {
         this.logEntryTopicListener = logEntryTopicListener;
     }
+
+    public SystemMetadataEntryListener getSystemMetadataEntryListener() {
+        return systemMetadataEntryListener;
+    }
+
+    public void setSystemMetadataEntryListener(SystemMetadataEntryListener systemMetadataEntryListener) {
+        this.systemMetadataEntryListener = systemMetadataEntryListener;
+    }
+
 }
