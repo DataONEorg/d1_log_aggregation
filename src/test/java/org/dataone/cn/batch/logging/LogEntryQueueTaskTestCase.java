@@ -4,6 +4,7 @@
  */
 
 package org.dataone.cn.batch.logging;
+import java.util.ArrayList;
 import java.util.Date;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.List;
@@ -47,7 +48,7 @@ import static org.junit.Assert.*;
 @ContextConfiguration(locations = {"classpath:/org/dataone/configuration/logEntryQueueTaskContext.xml"})
 public class LogEntryQueueTaskTestCase {
 
-    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
 
     private HazelcastInstance hzInstance;
@@ -58,7 +59,7 @@ public class LogEntryQueueTaskTestCase {
 
     private MockSolrServer httpSolrServer;
     @Resource
-    public void setIndexLogEntryQueue(BlockingQueue<LogEntrySolrItem> indexLogEntryQueue) {
+    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
@@ -86,14 +87,16 @@ public class LogEntryQueueTaskTestCase {
     public void init() {
         try {
             LogEntry logEntryItem = TypeMarshaller.unmarshalTypeFromStream(LogEntry.class, logEntryItemResource.getInputStream());
-                    LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntryItem);
-                    Date now = new Date();
-                    solrItem.setDateAggregated(now);
-                    Long integral = new Long(now.getTime());
-                    Long decimal = new Long(10000L);
-                    String id = integral.toString() + "." + decimal.toString();
-                    solrItem.setId(id);
-            indexLogEntryQueue.offer(solrItem, 500L, TimeUnit.MILLISECONDS);
+            LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntryItem);
+            Date now = new Date();
+            solrItem.setDateAggregated(now);
+            Long integral = new Long(now.getTime());
+            Long decimal = new Long(10000L);
+            String id = integral.toString() + "." + decimal.toString();
+            solrItem.setId(id);
+            List<LogEntrySolrItem> logEntryItemList = new ArrayList<LogEntrySolrItem>();
+            logEntryItemList.add(solrItem);
+            indexLogEntryQueue.offer(logEntryItemList, 500L, TimeUnit.MILLISECONDS);
         } catch (IOException ex) {
             ex.printStackTrace();
         } catch (InstantiationException ex) {

@@ -4,6 +4,8 @@
  */
 package org.dataone.cn.batch.logging;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Date;
 import com.hazelcast.core.ITopic;
 import org.dataone.configuration.Settings;
@@ -32,12 +34,12 @@ import static org.junit.Assert.*;
 @ContextConfiguration(locations = {"classpath:/org/dataone/configuration/logEntryTopicListenerContext.xml"})
 public class LogEntryTopicListenerTestCase {
 
-    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
 
     private HazelcastInstance hzInstance;
     @Resource
-    public void setIndexLogEntryQueue(BlockingQueue<LogEntrySolrItem> indexLogEntryQueue) {
+    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
@@ -61,8 +63,10 @@ public class LogEntryTopicListenerTestCase {
                     Long decimal = new Long(10000L);
                     String id = integral.toString() + "." + decimal.toString();
                     solrItem.setId(id);
-            ITopic<LogEntrySolrItem> topic = hzInstance.getTopic(Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic"));
-            topic.publish(solrItem);
+            List<LogEntrySolrItem> logEntryItemList = new ArrayList<LogEntrySolrItem>();
+            logEntryItemList.add(solrItem);
+            ITopic<List<LogEntrySolrItem>> topic = hzInstance.getTopic(Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic"));
+            topic.publish(logEntryItemList);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -71,12 +75,12 @@ public class LogEntryTopicListenerTestCase {
 
     @Test
     public void getLogEntryItem() {
-        LogEntrySolrItem logEntry = null;
+        List<LogEntrySolrItem> logEntryList = null;
         try {
-            logEntry = indexLogEntryQueue.poll(500L, TimeUnit.MILLISECONDS);
+            logEntryList = indexLogEntryQueue.poll(500L, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         }
-        assertNotNull(logEntry);
+        assertNotNull(logEntryList);
     }
 }
