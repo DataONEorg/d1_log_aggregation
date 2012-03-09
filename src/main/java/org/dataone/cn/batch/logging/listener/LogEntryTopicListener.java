@@ -12,6 +12,7 @@ import org.dataone.service.types.v1.LogEntry;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.text.SimpleDateFormat;
+import java.util.List;
 import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
@@ -20,13 +21,13 @@ import org.dataone.configuration.Settings;
  * @author waltz
  * 
  */
-public class LogEntryTopicListener implements MessageListener<LogEntrySolrItem> {
+public class LogEntryTopicListener implements MessageListener<List<LogEntrySolrItem>> {
 
     private HazelcastInstance hazelcast;
 
     // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<LogEntrySolrItem> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     Logger logger = Logger.getLogger(LogEntryTopicListener.class.getName());
     private static SimpleDateFormat format =
                 new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
@@ -40,12 +41,13 @@ public class LogEntryTopicListener implements MessageListener<LogEntrySolrItem> 
     }
     
     @Override
-    public void onMessage(LogEntrySolrItem e) {
+    public void onMessage(List<LogEntrySolrItem> logList) {
         try {
-            logger.debug("offering " + e.getEntryId());
-            indexLogEntryQueue.offer(e, 30L, TimeUnit.SECONDS);
+            indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
+            for (LogEntrySolrItem e : logList) {
             logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+            }
         }
     }
 
