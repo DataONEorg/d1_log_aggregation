@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.logging.Level;
 import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
@@ -83,130 +85,133 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      * @author waltz
      */
     @Override
-    public Date call() throws InterruptedException, ServiceFailure, NotFound {
-        HazelcastInstance hzclient = HazelcastClientInstance.getHazelcastClient();
-        // midnight of the current date is the latest date until which we wish to retrieve data
-        DateTime midnight = new DateTime(DateTimeZone.UTC);
-        // for testing
-//        midnight.minusMinutes(2);
-        midnight = midnight.withTime(0, 0, 0, 0);
-        IMap systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
-        Subject publicSubject = new Subject();
-        publicSubject.setValue(Constants.SUBJECT_PUBLIC);
-        // we are going to write directly to ldap for the LogLastAggregated
-        // because we do not want hazelcast to spam us about
-        // all of these updates since we have a listener in HarvestSchedulingManager
-        // that determines when updates/additions have occured and 
-        // re-adjusts scheduling
-        NodeRegistryService nodeRegistryService = new NodeRegistryService();
-        NodeAccess nodeAccess = new NodeAccess();
-        // logger is not  be serializable, but no need to make it transient imo
+    public Date call() throws ExecutionException {
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
-        logger.debug("called LogAggregatorTask");
-        HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
-        ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
-        // Need the LinkedHashMap to preserver insertion order
-        Node d1Node = nodeRegistryService.getNode(d1NodeReference);
-        Date lastMofidiedDate = nodeAccess.getLogLastAggregated(d1NodeReference);
-        hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
-        if (lastMofidiedDate == null) {
-            lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
-        }
-        Date lastLoggedDate = new Date(lastMofidiedDate.getTime());
-        List<LogEntry> readQueue = null;
-        String d1NodeBaseUrl = d1Node.getBaseURL();
-        if (d1Node.getType().equals(NodeType.CN)) {
-            d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
-        }
-        do {
-            // read upto a 1000 objects (the default, but it can be overwritten)
-            // from ListObjects and process before retrieving more
-            if (start == 0 || (start < total)) {
-                readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, midnight.toDate());
-                logger.debug("found " + readQueue.size() + " entries");
-                List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(batchSize);
-                for (LogEntry logEntry : readQueue) {
-                    if (logEntry.getDateLogged().after(lastLoggedDate)) {
-                        lastLoggedDate = logEntry.getDateLogged();
-                    }
-                    Date now = new Date();
-                    LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
-                    solrItem.setDateAggregated(now);
-                    SystemMetadata systemMetadata = (SystemMetadata) systemMetadataMap.get(logEntry.getIdentifier());
-                    if (systemMetadata != null) {
-
-                        List<String> subjectsAllowedRead = new ArrayList<String>();
-                        // RightsHolder always has read permission
-                        // even if SystemMetadata does not have an AccessPolicy
-                        Subject rightsHolder = systemMetadata.getRightsHolder();
-                        if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-                            X500Principal principal = new X500Principal(rightsHolder.getValue());
-                            String standardizedName = principal.getName(X500Principal.RFC2253);
-                            subjectsAllowedRead.add(standardizedName);
+        try {
+            
+            HazelcastInstance hzclient = HazelcastClientInstance.getHazelcastClient();
+            // midnight of the current date is the latest date until which we wish to retrieve data
+            DateTime midnight = new DateTime(DateTimeZone.UTC);
+            // for testing
+            //        midnight.minusMinutes(2);
+            midnight = midnight.withTime(0, 0, 0, 0);
+            IMap systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
+            Subject publicSubject = new Subject();
+            publicSubject.setValue(Constants.SUBJECT_PUBLIC);
+            // we are going to write directly to ldap for the LogLastAggregated
+            // because we do not want hazelcast to spam us about
+            // all of these updates since we have a listener in HarvestSchedulingManager
+            // that determines when updates/additions have occured and
+            // re-adjusts scheduling
+            NodeRegistryService nodeRegistryService = new NodeRegistryService();
+            NodeAccess nodeAccess = new NodeAccess();
+            // logger is not  be serializable, but no need to make it transient imo
+            logger.debug("called LogAggregatorTask");
+            HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
+            ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
+            // Need the LinkedHashMap to preserver insertion order
+            Node d1Node = nodeRegistryService.getNode(d1NodeReference);
+            Date lastMofidiedDate = nodeAccess.getLogLastAggregated(d1NodeReference);
+            hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
+            if (lastMofidiedDate == null) {
+                lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
+            }
+            Date lastLoggedDate = new Date(lastMofidiedDate.getTime());
+            List<LogEntry> readQueue = null;
+            String d1NodeBaseUrl = d1Node.getBaseURL();
+            if (d1Node.getType().equals(NodeType.CN)) {
+                d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
+            }
+            do {
+                // read upto a 1000 objects (the default, but it can be overwritten)
+                // from ListObjects and process before retrieving more
+                if (start == 0 || (start < total)) {
+                    readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, midnight.toDate());
+                    logger.debug("found " + readQueue.size() + " entries");
+                    List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(batchSize);
+                    for (LogEntry logEntry : readQueue) {
+                        if (logEntry.getDateLogged().after(lastLoggedDate)) {
+                            lastLoggedDate = logEntry.getDateLogged();
                         }
-
-                        if (systemMetadata.getAccessPolicy() != null) {
-                            List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
-
-                            for (AccessRule accessRule : allowList) {
-                                List<Subject> subjectList = accessRule.getSubjectList();
-                                for (Subject accessSubject : subjectList) {
-                                    if (accessSubject.equals(publicSubject)) {
-                                        // set Public access boolean on record
-                                        solrItem.setIsPublic(true);
-                                    } else {
-                                        // add subject as having read access on the record
-                                        X500Principal principal = new X500Principal(accessSubject.getValue());
-                                        String standardizedName = principal.getName(X500Principal.RFC2253);
-                                        subjectsAllowedRead.add(standardizedName);
+                        Date now = new Date();
+                        LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
+                        solrItem.setDateAggregated(now);
+                        SystemMetadata systemMetadata = (SystemMetadata) systemMetadataMap.get(logEntry.getIdentifier());
+                        if (systemMetadata != null) {
+                            List<String> subjectsAllowedRead = new ArrayList<String>();
+                            // RightsHolder always has read permission
+                            // even if SystemMetadata does not have an AccessPolicy
+                            Subject rightsHolder = systemMetadata.getRightsHolder();
+                            if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
+                                X500Principal principal = new X500Principal(rightsHolder.getValue());
+                                String standardizedName = principal.getName(X500Principal.RFC2253);
+                                subjectsAllowedRead.add(standardizedName);
+                            }
+                            if (systemMetadata.getAccessPolicy() != null) {
+                                List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
+                                for (AccessRule accessRule : allowList) {
+                                    List<Subject> subjectList = accessRule.getSubjectList();
+                                    for (Subject accessSubject : subjectList) {
+                                        if (accessSubject.equals(publicSubject)) {
+                                            // set Public access boolean on record
+                                            solrItem.setIsPublic(true);
+                                        } else {
+                                            // add subject as having read access on the record
+                                            X500Principal principal = new X500Principal(accessSubject.getValue());
+                                            String standardizedName = principal.getName(X500Principal.RFC2253);
+                                            subjectsAllowedRead.add(standardizedName);
+                                        }
                                     }
                                 }
+                            } else {
+                                logger.warn("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
                             }
-
-                        } else {
-                            logger.warn("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
+                            solrItem.setReadPermission(subjectsAllowedRead);
                         }
-                        solrItem.setReadPermission(subjectsAllowedRead);
+                        Long integral = new Long(now.getTime());
+                        Long decimal = new Long(hzAtomicNumber.incrementAndGet());
+                        String id = integral.toString() + "." + decimal.toString();
+                        solrItem.setId(id);
+                        logEntrySolrItemList.add(solrItem);
                     }
-                    Long integral = new Long(now.getTime());
-                    Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                    String id = integral.toString() + "." + decimal.toString();
-                    solrItem.setId(id);
-                    logEntrySolrItemList.add(solrItem);
+                    // publish 100 at a time, do not overwhelm the
+                    // network with massive packets, or too many small packets
+                    int startIndex = 0;
+                    int endIndex = 0;
+                    do {
+                        endIndex += 100;
+                        if (logEntrySolrItemList.size() < endIndex) {
+                            endIndex = logEntrySolrItemList.size();
+                        }
+                        List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
+                        publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
+                        hzLogEntryTopic.publish(publishEntrySolrItemList);
+                        try {
+                            // Simple way to throttle publishing of messages
+                            // thread should sleep of 250MS
+                            Thread.sleep(250L);
+                        } catch (InterruptedException ex) {
+                            logger.warn(ex.getMessage());
+                        }
+                        startIndex = endIndex;
+                    } while (endIndex < logEntrySolrItemList.size());
+                } else {
+                    readQueue = null;
                 }
-                // publish 100 at a time, do not overwhelm the
-                // network with massive packets, or too many small packets
-                int startIndex = 0;
-                int endIndex = 0;
-                do {
-                    endIndex += 100;
-                    if (logEntrySolrItemList.size() < endIndex) {
-                        endIndex = logEntrySolrItemList.size();
-                    }
-                    List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
-                    publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
-                    hzLogEntryTopic.publish(publishEntrySolrItemList);
-                    try {
-                        // Simple way to throttle publishing of messages
-                        // thread should sleep of 250MS
-                        Thread.sleep(250L);
-                    } catch (InterruptedException ex) {
-                        logger.warn(ex.getMessage());
-                    }
-                    startIndex = endIndex;
-                } while (endIndex < logEntrySolrItemList.size());
-
-            } else {
-                readQueue = null;
+            } while ((readQueue != null) && (!readQueue.isEmpty()));
+            if (lastLoggedDate.after(lastMofidiedDate)) {
+                nodeAccess.setLogLastAggregated(d1NodeReference, lastLoggedDate);
             }
-        } while ((readQueue != null) && (!readQueue.isEmpty()));
-
-        if (lastLoggedDate.after(lastMofidiedDate)) {
-            nodeAccess.setLogLastAggregated(d1NodeReference, lastLoggedDate);
+            return lastLoggedDate;
+        } catch (ServiceFailure ex) {
+            ex.printStackTrace();
+            logger.error(ex.getMessage());
+            throw new ExecutionException(ex);
+        } catch (NotFound ex) {
+            ex.printStackTrace();
+            logger.error(ex.getMessage());
+            throw new ExecutionException(ex);
         }
-
-        // return the date of completion of the task
-        return lastLoggedDate;
     }
 
     /*
