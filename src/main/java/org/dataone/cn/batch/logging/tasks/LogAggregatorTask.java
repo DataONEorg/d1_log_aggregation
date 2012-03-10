@@ -33,6 +33,7 @@ import org.dataone.service.exceptions.NotFound;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.AccessRule;
+import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.Log;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.Node;
@@ -70,7 +71,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private static AtomicNumber hzAtomicNumber;
     private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
-    String hzSystemMetaMapString = Settings.getConfiguration().getString("Synchronization.hzSystemMetaMap");
+    String hzSystemMetaMapString = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
 
     public LogAggregatorTask(NodeReference d1NodeReference, Integer batchSize) {
         this.d1NodeReference = d1NodeReference;
@@ -95,7 +96,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             // for testing
             //        midnight.minusMinutes(2);
             midnight = midnight.withTime(0, 0, 0, 0);
-            IMap systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
+            IMap<Identifier, SystemMetadata> systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
             Subject publicSubject = new Subject();
             publicSubject.setValue(Constants.SUBJECT_PUBLIC);
             // we are going to write directly to ldap for the LogLastAggregated
@@ -136,7 +137,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         Date now = new Date();
                         LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
                         solrItem.setDateAggregated(now);
-                        SystemMetadata systemMetadata = (SystemMetadata) systemMetadataMap.get(logEntry.getIdentifier());
+                        SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
                         if (systemMetadata != null) {
                             List<String> subjectsAllowedRead = new ArrayList<String>();
                             // RightsHolder always has read permission
@@ -205,11 +206,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             return lastLoggedDate;
         } catch (ServiceFailure ex) {
             ex.printStackTrace();
-            logger.error(ex.getMessage());
+            logger.error(ex.serialize(ex.FMT_XML));
             throw new ExecutionException(ex);
         } catch (NotFound ex) {
             ex.printStackTrace();
-            logger.error(ex.getMessage());
+            logger.error(ex.serialize(ex.FMT_XML));
+            throw new ExecutionException(ex);
+        } catch (IllegalArgumentException ex) {
+            ex.printStackTrace();
             throw new ExecutionException(ex);
         }
     }
