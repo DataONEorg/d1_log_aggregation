@@ -89,7 +89,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     public Date call() throws ExecutionException {
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         try {
-            
+
             HazelcastInstance hzclient = HazelcastClientInstance.getHazelcastClient();
             // midnight of the current date is the latest date until which we wish to retrieve data
             DateTime midnight = new DateTime(DateTimeZone.UTC);
@@ -144,9 +144,13 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             // even if SystemMetadata does not have an AccessPolicy
                             Subject rightsHolder = systemMetadata.getRightsHolder();
                             if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-                                X500Principal principal = new X500Principal(rightsHolder.getValue());
-                                String standardizedName = principal.getName(X500Principal.RFC2253);
-                                subjectsAllowedRead.add(standardizedName);
+                                try {
+                                    X500Principal principal = new X500Principal(rightsHolder.getValue());
+                                    String standardizedName = principal.getName(X500Principal.RFC2253);
+                                    subjectsAllowedRead.add(standardizedName);
+                                } catch (IllegalArgumentException ex) {
+                                    logger.warn("Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
+                                }
                             }
                             if (systemMetadata.getAccessPolicy() != null) {
                                 List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
@@ -157,10 +161,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                             // set Public access boolean on record
                                             solrItem.setIsPublic(true);
                                         } else {
-                                            // add subject as having read access on the record
-                                            X500Principal principal = new X500Principal(accessSubject.getValue());
-                                            String standardizedName = principal.getName(X500Principal.RFC2253);
-                                            subjectsAllowedRead.add(standardizedName);
+                                            try {
+                                                // add subject as having read access on the record
+                                                X500Principal principal = new X500Principal(accessSubject.getValue());
+                                                String standardizedName = principal.getName(X500Principal.RFC2253);
+                                                subjectsAllowedRead.add(standardizedName);
+                                            } catch (IllegalArgumentException ex) {
+                                                logger.warn("Found improperly formatted access policy subject: " + accessSubject.getValue() + "\n" + ex.getMessage());
+                                            }
                                         }
                                     }
                                 }
