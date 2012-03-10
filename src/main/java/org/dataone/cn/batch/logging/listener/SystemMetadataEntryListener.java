@@ -35,7 +35,7 @@ import org.dataone.service.util.Constants;
 public class SystemMetadataEntryListener implements EntryListener<Identifier, SystemMetadata> {
 
     private static Logger logger = Logger.getLogger(SystemMetadataEntryListener.class.getName());
-    private HazelcastClient hzClient;
+    private static HazelcastInstance hzclient;
     private HazelcastInstance hazelcast;
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
@@ -50,8 +50,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         logger.info("starting systemMetadata entry listener...");
         logger.info("System Metadata value: " + HZ_SYSTEM_METADATA);
 
-        this.hzClient = HazelcastClientInstance.getHazelcastClient();
-        this.systemMetadata = this.hzClient.getMap(HZ_SYSTEM_METADATA);
+        hzclient = HazelcastClientInstance.getHazelcastClient();
+        this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
         this.hzLogEntryTopic = hazelcast.getTopic(HZ_LOGENTRY_TOPICNAME);
         logger.info("System Metadata size: " + this.systemMetadata.size());
@@ -131,9 +131,13 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         // even if SystemMetadata does not have an AccessPolicy
         Subject rightsHolder = systemMetadata.getRightsHolder();
         if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-            X500Principal principal = new X500Principal(rightsHolder.getValue());
-            String standardizedName = principal.getName(X500Principal.RFC2253);
-            subjectsAllowedRead.add(standardizedName);
+            try {
+                X500Principal principal = new X500Principal(rightsHolder.getValue());
+                String standardizedName = principal.getName(X500Principal.RFC2253);
+                subjectsAllowedRead.add(standardizedName);
+            } catch (IllegalArgumentException ex) {
+                logger.warn("Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
+            }
         }
 
         if (systemMetadata.getAccessPolicy() != null) {
@@ -146,10 +150,14 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
                         // set Public access boolean on record
                         isPublicSubject = true;
                     } else {
-                        // add subject as having read access on the record
-                        X500Principal principal = new X500Principal(accessSubject.getValue());
-                        String standardizedName = principal.getName(X500Principal.RFC2253);
-                        subjectsAllowedRead.add(standardizedName);
+                        try {
+                            // add subject as having read access on the record
+                            X500Principal principal = new X500Principal(accessSubject.getValue());
+                            String standardizedName = principal.getName(X500Principal.RFC2253);
+                            subjectsAllowedRead.add(standardizedName);
+                        } catch (IllegalArgumentException ex) {
+                            logger.warn("Found improperly formatted access policy subject: " + accessSubject.getValue() + "\n" + ex.getMessage());
+                        }
                     }
                 }
             }
