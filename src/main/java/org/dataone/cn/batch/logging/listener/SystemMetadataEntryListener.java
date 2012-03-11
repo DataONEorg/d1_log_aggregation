@@ -50,7 +50,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         logger.info("starting systemMetadata entry listener...");
         logger.info("System Metadata value: " + HZ_SYSTEM_METADATA);
 
-        hzclient = HazelcastClientInstance.getHazelcastClient();
+        hzclient = AggregationHazelcastClientInstance.getHazelcastClient();
         this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
         this.hzLogEntryTopic = hazelcast.getTopic(HZ_LOGENTRY_TOPICNAME);
