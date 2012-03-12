@@ -313,7 +313,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      * 
      */
     public void migrationCompleted(MigrationEvent migrationEvent) {
-        logger.info("migrationCompleted " + migrationEvent.getPartitionId());
+        logger.debug("migrationCompleted " + migrationEvent.getPartitionId());
         // this is the partition that was moved from 
         // one node to the other
         // try to determine if a Node has migrated home servers
@@ -340,7 +340,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
 
     public void migrationStarted(MigrationEvent migrationEvent) {
-        logger.info("migrationStarted " + migrationEvent.getPartitionId());
+        logger.debug("migrationStarted " + migrationEvent.getPartitionId());
     }
 
     /*
