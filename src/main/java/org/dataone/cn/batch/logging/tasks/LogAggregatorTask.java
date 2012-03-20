@@ -16,7 +16,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.logging.Level;
 import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
@@ -72,7 +71,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     private static AtomicNumber hzAtomicNumber;
     private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
     String hzSystemMetaMapString = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
-
+    static private int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
+    static private String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
     public LogAggregatorTask(NodeReference d1NodeReference, Integer batchSize) {
         this.d1NodeReference = d1NodeReference;
         this.batchSize = batchSize;
@@ -95,10 +95,25 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             DateTime midnight = new DateTime(DateTimeZone.UTC);
             // for testing
             //        midnight.minusMinutes(2);
-            midnight = midnight.withTime(0, 0, 0, 0);
+            if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
+                 // midnight is really now offset by a seconds found in config file
+                midnight.minusSeconds(triggerIntervalPeriod);
+                // midnight is really now offset by a minutes found in config file
+            } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
+                midnight.minusMinutes(triggerIntervalPeriod);
+            } else {
+                // midnight is really midnight
+                midnight = midnight.withTime(0, 0, 0, 0);
+            }
+
+
             IMap<Identifier, SystemMetadata> systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
             Subject publicSubject = new Subject();
             publicSubject.setValue(Constants.SUBJECT_PUBLIC);
+            Subject authenticatedSubject = new Subject();
+            authenticatedSubject.setValue(Constants.SUBJECT_AUTHENTICATED_USER);
+            Subject verifiedSubject = new Subject();
+            verifiedSubject.setValue(Constants.SUBJECT_VERIFIED_USER);
             // we are going to write directly to ldap for the LogLastAggregated
             // because we do not want hazelcast to spam us about
             // all of these updates since we have a listener in HarvestSchedulingManager
@@ -158,8 +173,13 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                     List<Subject> subjectList = accessRule.getSubjectList();
                                     for (Subject accessSubject : subjectList) {
                                         if (accessSubject.equals(publicSubject)) {
-                                            // set Public access boolean on record
+                                            // set Public access boolean on record, it is a shortcut
                                             solrItem.setIsPublic(true);
+                                            subjectsAllowedRead.add(Constants.SUBJECT_PUBLIC);
+                                        } else if (accessSubject.equals(authenticatedSubject)) {
+                                            subjectsAllowedRead.add(Constants.SUBJECT_AUTHENTICATED_USER);
+                                        } else if (accessSubject.equals(verifiedSubject)) {
+                                            subjectsAllowedRead.add(Constants.SUBJECT_VERIFIED_USER);
                                         } else {
                                             try {
                                                 // add subject as having read access on the record
@@ -167,7 +187,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                                 String standardizedName = principal.getName(X500Principal.RFC2253);
                                                 subjectsAllowedRead.add(standardizedName);
                                             } catch (IllegalArgumentException ex) {
-                                                logger.warn("Found improperly formatted access policy subject: " + accessSubject.getValue() + "\n" + ex.getMessage());
+                                                // It may be a group, or a psuedo user, so just add the subject's value
+                                                // without attempting to standardize it
+                                                subjectsAllowedRead.add(accessSubject.getValue());
+                                                logger.warn(accessSubject.getValue() +" does not conform to RFC2253 conventions");
                                             }
                                         }
                                     }
