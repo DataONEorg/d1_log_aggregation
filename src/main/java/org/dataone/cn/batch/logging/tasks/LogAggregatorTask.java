@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutionException;
 import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
+import org.dataone.client.auth.CertificateManager;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.cn.ldap.NodeAccess;
@@ -160,8 +161,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             Subject rightsHolder = systemMetadata.getRightsHolder();
                             if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
                                 try {
-                                    X500Principal principal = new X500Principal(rightsHolder.getValue());
-                                    String standardizedName = principal.getName(X500Principal.RFC2253);
+                                    String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
+
                                     subjectsAllowedRead.add(standardizedName);
                                 } catch (IllegalArgumentException ex) {
                                     logger.warn("Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
@@ -183,11 +184,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                         } else {
                                             try {
                                                 // add subject as having read access on the record
-                                                X500Principal principal = new X500Principal(accessSubject.getValue());
-                                                String standardizedName = principal.getName(X500Principal.RFC2253);
+                                                String standardizedName = CertificateManager.getInstance().standardizeDN(accessSubject.getValue());
                                                 subjectsAllowedRead.add(standardizedName);
                                             } catch (IllegalArgumentException ex) {
-                                                // It may be a group, or a psuedo user, so just add the subject's value
+                                                // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
                                                 // without attempting to standardize it
                                                 subjectsAllowedRead.add(accessSubject.getValue());
                                                 logger.warn(accessSubject.getValue() +" does not conform to RFC2253 conventions");
