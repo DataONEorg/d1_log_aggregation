@@ -279,7 +279,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             // otherwise skip because when the start is equal or greater
             // then total, then all objects have been harvested
 
-            logList = mNode.getLogRecords(session, fromDate, toDate, null, start, batchSize);
+            logList = mNode.getLogRecords(session, fromDate, toDate, null, start, batchSize, null);
             // if objectList is null or the count is 0 or the list is empty, then
             // there is nothing to process
             if (!((logList == null)
