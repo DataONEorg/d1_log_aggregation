@@ -1,25 +1,20 @@
 /**
- * This work was created by participants in the DataONE project, and is
- * jointly copyrighted by participating institutions in DataONE. For 
- * more information on DataONE, see our web site at http://dataone.org.
+ * This work was created by participants in the DataONE project, and is jointly copyrighted by participating
+ * institutions in DataONE. For more information on DataONE, see our web site at http://dataone.org.
  *
- *   Copyright ${year}
+ * Copyright ${year}
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and 
- * limitations under the License.
- * 
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ *
  * $Id$
  */
-
 package org.dataone.cn.batch.logging;
 
 import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
@@ -86,14 +81,12 @@ import org.joda.time.DateTime;
 import static org.quartz.JobBuilder.*;
 
 /**
- * this bean must be managed by Spring
- * upon startup of spring it will execute via init method
- * 
- * evaluate whether the NodeList contains nodes that should be harvested for logs on the
- * executing coordinating node. It will add  or remove triggers for jobs based on
- * events, such as startup, nightly refactoring, more CNs coming online
+ * this bean must be managed by Spring upon startup of spring it will execute via init method
  *
- * 
+ * evaluate whether the NodeList contains nodes that should be harvested for logs on the executing coordinating node. It
+ * will add or remove triggers for jobs based on events, such as startup, nightly refactoring, more CNs coming online
+ *
+ *
  * @author waltz
  */
 public class LogAggregationScheduleManager implements ApplicationContextAware, EntryListener<NodeReference, Node>, MigrationListener {
@@ -102,7 +95,8 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             Settings.getConfiguration().getString("D1Client.certificate.directory")
             + File.separator + Settings.getConfiguration().getString("D1Client.certificate.filename");
     public static Log logger = LogFactory.getLog(LogAggregationScheduleManager.class);
-    private static String groupName = "LogAggregatorHarvesting";
+    private static String logGroupName = "LogAggregatorHarvesting";
+    private static String recoveryGroupName = "LogAggregatorRecovery";
     private HazelcastInstance hazelcast;
     private HazelcastLdapStore hazelcastLdapStore;
     private Scheduler scheduler;
@@ -113,13 +107,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     private LogEntryTopicListener logEntryTopicListener;
     private SystemMetadataEntryListener systemMetadataEntryListener;
     private static SimpleScheduleBuilder simpleTriggerSchedule = null;
-
     private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
     static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes");
     static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes");
+
     public void init() {
         try {
             int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
@@ -129,7 +123,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
                 simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
-                 simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
             } else {
                 simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow();
             }
@@ -186,7 +180,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
                 }
             }
             // remove any existing jobs
-            GroupMatcher<JobKey> groupMatcher = GroupMatcher.groupEquals(groupName);
+            GroupMatcher<JobKey> groupMatcher = GroupMatcher.groupEquals(logGroupName);
             Set<JobKey> jobsInGroup = scheduler.getJobKeys(groupMatcher);
 
             for (JobKey jobKey : jobsInGroup) {
@@ -198,10 +192,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
 
         // Add the local CN to the jobs to be executed.
-        JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + localCnIdentifier, groupName).usingJobData("NodeIdentifier", localCnIdentifier).build();
-        Trigger trigger = newTrigger().withIdentity("trigger-" + localCnIdentifier, groupName).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
+        JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + localCnIdentifier, logGroupName).usingJobData("NodeIdentifier", localCnIdentifier).build();
+        Trigger trigger = newTrigger().withIdentity("trigger-" + localCnIdentifier, logGroupName).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
         try {
-            JobKey jobKey = new JobKey("job-" + localCnIdentifier, groupName);
+            JobKey jobKey = new JobKey("job-" + localCnIdentifier, logGroupName);
             if (!scheduler.checkExists(jobKey)) {
                 logger.info("scheduling job-" + localCnIdentifier + " to start at " + zFmt.print(startTime));
                 scheduler.scheduleJob(job, trigger);
@@ -237,10 +231,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
 
             // Currently, the misfire configuration in the quartz.properties is 5 minutes
             // misfire will cause the trigger to be fired again until successful
-            JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + key.getValue(), groupName).usingJobData("NodeIdentifier", key.getValue()).build();
-            Trigger trigger = newTrigger().withIdentity("trigger-" + key.getValue(), groupName).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
+            JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + key.getValue(), logGroupName).usingJobData("NodeIdentifier", key.getValue()).build();
+            Trigger trigger = newTrigger().withIdentity("trigger-" + key.getValue(), logGroupName).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
             try {
-                JobKey jobKey = new JobKey("job-" + key.getValue(), groupName);
+                JobKey jobKey = new JobKey("job-" + key.getValue(), logGroupName);
                 if (!scheduler.checkExists(jobKey)) {
                     logger.info("scheduling job-" + key.getValue() + " to start at " + zFmt.print(startDate.getTime()));
                     scheduler.scheduleJob(job, trigger);
@@ -255,7 +249,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
     /*
      * monitor node additions
-     * 
+     *
      * additions to hazelcast should only be noted if an administrator approves a node(?)
      *
      */
@@ -263,7 +257,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     @Override
     public void entryAdded(EntryEvent<NodeReference, Node> event) {
         logger.info("Node Entry added key=" + event.getKey().getValue());
-        try {
+/*        try {
             Thread.sleep(2000L);
         } catch (InterruptedException ex) {
             Logger.getLogger(LogAggregationScheduleManager.class.getName()).log(Level.SEVERE, null, ex);
@@ -278,7 +272,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             } catch (SchedulerException ex) {
                 throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
             }
-        }
+        } */
     }
 
     @Override
@@ -286,8 +280,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         logger.error("Entry removed key=" + event.getKey().getValue());
     }
     /*
-     * monitor node changes
-     * updates to hazelcast should only be noted if updateNodeCapabilities is called on the CN
+     * monitor node changes updates to hazelcast should only be noted if updateNodeCapabilities is called on the CN
      *
      */
 
@@ -324,11 +317,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     // http://groups.google.com/group/hazelcast/browse_thread/thread/3856d5829e26f81c?fwc=1
     //
     /*
-     * if a migration has occurred between CNs, then we need to figure
-     * out if nodes have changed their home machine
-     * only the nodes 'owned' by a local machine should be
-     * scheduled by that machine
-     * 
+     * if a migration has occurred between CNs, then we need to figure out if nodes have changed their home machine only
+     * the nodes 'owned' by a local machine should be scheduled by that machine
+     *
      */
     public void migrationCompleted(MigrationEvent migrationEvent) {
         logger.debug("migrationCompleted " + migrationEvent.getPartitionId());
@@ -364,18 +355,14 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     /*
      * Determine if log aggregation has ever run before on this machine
      *
-     * If log aggregation has never run on any CN, then start up without
-     * Recovery
-     * If log aggregation has run on this CN, but never on any others
-     * then startup without Recovery
+     * If log aggregation has never run on any CN, then start up without Recovery If log aggregation has run on this CN,
+     * but never on any others then startup without Recovery
      *
-     * If log aggregation has never run on this CN, but run on others
-     * try to recover all records from another CN
+     * If log aggregation has never run on this CN, but run on others try to recover all records from another CN
      *
-     * If log aggreation has run on this CN and on other CNs,
-     * then try to recover all records from where this machines log entries
-     * end
-     * 
+     * If log aggregation has run on this CN and on other CNs, then try to recover all records from where this machines
+     * log entries end
+     *
      */
     public void scheduleRecoveryJob() throws SolrServerException, ServiceFailure {
         Boolean recovery = false;
@@ -468,28 +455,23 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             jobDataMap.put("recoveryQuery", recoveryQuery);
             jobDataMap.put("localhostSolrServer", localhostSolrServer);
             jobDataMap.put("latestRecoverableDate", latestRecoverableDate);
-            /* placing Solr Servers in the jobMap is questionable
-             * the JobMap entries need to be serialized if
-             * ever they become distributed or persisted (not currently)
-             * SolrServer class is serializable, but how it is accomplished
-             * may influence if this is a viable strategy for future
-             * modifications/releases
+            /*
+             * placing Solr Servers in the jobMap is questionable the JobMap entries need to be serialized if ever they
+             * become distributed or persisted (not currently) SolrServer class is serializable, but how it is
+             * accomplished may influence if this is a viable strategy for future modifications/releases
              *
-             * From the quartz documentation:
-             * If you use a persistent JobStore (discussed in the JobStore section of this tutorial)
-             * you should use some care in deciding what you place in the JobDataMap,
-             * because the object in it will be serialized, and they therefore become prone to
-             * class-versioning problems. Obviously standard Java types should be very safe,
-             * but beyond that, any time someone changes the definition of a class for which
-             * you have serialized instances, care has to be taken not to break compatibility.
+             * From the quartz documentation: If you use a persistent JobStore (discussed in the JobStore section of
+             * this tutorial) you should use some care in deciding what you place in the JobDataMap, because the object
+             * in it will be serialized, and they therefore become prone to class-versioning problems. Obviously
+             * standard Java types should be very safe, but beyond that, any time someone changes the definition of a
+             * class for which you have serialized instances, care has to be taken not to break compatibility.
              *
-             * on the other hand, placeing them in the JobStore makes unit testing of
-             * LogAggregationRecoverJob easier.
-             * 
+             * on the other hand, placeing them in the JobStore makes unit testing of LogAggregationRecoverJob easier.
+             *
              */
 
-            JobDetail job = newJob(LogAggregationRecoverJob.class).withIdentity("job-recover" + localCnIdentifier, groupName).usingJobData(jobDataMap).build();
-            Trigger trigger = newTrigger().withIdentity("trigger-recover" + localCnIdentifier, groupName).startAt(startTime.toDate()).withSchedule(recoveryTriggerSchedule).build();
+            JobDetail job = newJob(LogAggregationRecoverJob.class).withIdentity("job-recover" + localCnIdentifier, recoveryGroupName).usingJobData(jobDataMap).build();
+            Trigger trigger = newTrigger().withIdentity("trigger-recover" + localCnIdentifier, recoveryGroupName).startAt(startTime.toDate()).withSchedule(recoveryTriggerSchedule).build();
             try {
                 scheduler.scheduleJob(job, trigger);
             } catch (SchedulerException ex) {
@@ -553,5 +535,4 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     public void setSystemMetadataEntryListener(SystemMetadataEntryListener systemMetadataEntryListener) {
         this.systemMetadataEntryListener = systemMetadataEntryListener;
     }
-
 }
