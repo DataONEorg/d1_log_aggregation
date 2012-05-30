@@ -37,6 +37,7 @@ import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
+import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
 import org.springframework.core.task.AsyncTaskExecutor;
 
@@ -116,14 +117,22 @@ public class LogAggregationHarvestJob implements Job {
                     } catch (InterruptedException ex) {
                         logger.error(ex.getMessage());
                     } catch (ExecutionException ex) {
-                        logger.error(ex.getMessage());
+                        if (ex.getCause() instanceof ExecutionDisabledException) {
+                            logger.error("ExecutionDisabledException: " + ex.getMessage() + "\n\tExecutionDisabledException: Will fire Job again\n");
+                            jex = new JobExecutionException();
+                            jex.setStackTrace(ex.getStackTrace());
+                            jex.setRefireImmediately(true);
+                            Thread.sleep(5000L);
+                        } else {
+                            logger.error("ExecutionException: " + ex.getMessage());
+                        }
                     }
                     // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
                     // Does not need to be stored, maybe just printed?
                     if (lastProcessingCompletedDate == null) {
-                        logger.info("ObjectListHarvestTask returned with no completion date!");
+                        logger.info("LogAggregatorTask returned with no completion date!");
                     } else {
-                        logger.info("ObjectListHarvestTask returned with a date of " + format.format(lastProcessingCompletedDate));
+                        logger.info("LogAggregatorTask returned with a date of " + format.format(lastProcessingCompletedDate));
                     }
                     // think about putting the jobContext.getFireInstanceId() on a queue
                     // or something so that all the entries for that job get submitted
@@ -131,15 +140,16 @@ public class LogAggregationHarvestJob implements Job {
                 } else {
                     // log this message, someone else has the lock (and they probably shouldn't)
                     try {
-                        // sleep for 5 seconds?
-                        Thread.sleep(5000L);
+                        // sleep for 30 seconds?
+                        Thread.sleep(30000L);
+                        logger.warn(jobContext.getJobDetail().getDescription() + " locked");
+
+                        jex = new JobExecutionException();
+                        jex.setRefireImmediately(true);
                     } catch (InterruptedException ex) {
                         logger.debug(ex.getMessage());
                     }
-                    logger.warn(jobContext.getJobDetail().getDescription() + " locked");
 
-                    jex = new JobExecutionException();
-                    jex.refireImmediately();
                 }
             }
         } catch (Exception ex) {

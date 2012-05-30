@@ -77,6 +77,7 @@ import org.springframework.context.ApplicationContextAware;
 import static org.quartz.TriggerBuilder.*;
 import static org.quartz.SimpleScheduleBuilder.*;
 import org.joda.time.DateTime;
+import org.quartz.*;
 
 import static org.quartz.JobBuilder.*;
 
@@ -95,8 +96,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             Settings.getConfiguration().getString("D1Client.certificate.directory")
             + File.separator + Settings.getConfiguration().getString("D1Client.certificate.filename");
     public static Log logger = LogFactory.getLog(LogAggregationScheduleManager.class);
+    // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
     private static String recoveryGroupName = "LogAggregatorRecovery";
+    
     private HazelcastInstance hazelcast;
     private HazelcastLdapStore hazelcastLdapStore;
     private Scheduler scheduler;
@@ -111,11 +114,26 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
+    // Amount of time to delay the start of all jobs at initialization
+    // so that not all jobs start at once, they should be staggered
     static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes");
+    // Amount of time to delay the start the recovery job at initialization
     static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes");
 
+    /* 
+     * Called by Spring to bootstrap log aggregation
+     * it will set up default intervals between job executions for Membernode harvesting
+     * it will initialize Quartz
+     * it will schedule membernodes for harvesting
+     * 
+     * it also adds a listener for changes in the hazelcast Nodes map and hz partitioner
+     * Change in hzNodes or migration of partitions may entail rebalancing of quartz jobs
+     * 
+     */
     public void init() {
         try {
+            // log aggregregation should ideally execute at least once per day per membernode
+            // Sets the Period of time between sequential job executions, 24 hrs is default
             int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
             String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
@@ -163,7 +181,17 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         }
     }
 
-    public void manageHarvest() throws SchedulerException {
+    /**
+     * will perform the recalculation of the scheduler. 
+     * 
+     * if scheduler is running, it will be disabled All jobs will be
+     * deleted for this node All nodes that are considered 'local' by hazelcast 
+     * will be scheduled with log aggregation jobs
+     *
+     * Seems that the listeners could call this in parallel, and it should
+     * be an atomic operation, so it is synchronized
+     */
+    public synchronized void manageHarvest() throws SchedulerException {
         DateTime startTime = new DateTime();
         // delay the startTime to allow all processing to startup and
         // come to some kind of steady state... might not be possible
@@ -190,13 +218,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         }
         // populate the nodeList
         IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
-
+        JobKey jobKey = new JobKey("job-" + localCnIdentifier, logGroupName);
         // Add the local CN to the jobs to be executed.
-        JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + localCnIdentifier, logGroupName).usingJobData("NodeIdentifier", localCnIdentifier).build();
-        Trigger trigger = newTrigger().withIdentity("trigger-" + localCnIdentifier, logGroupName).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
         try {
-            JobKey jobKey = new JobKey("job-" + localCnIdentifier, logGroupName);
             if (!scheduler.checkExists(jobKey)) {
+                JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData("NodeIdentifier", localCnIdentifier).build();
+                TriggerKey triggerKey = new TriggerKey("trigger-" + localCnIdentifier, logGroupName);
+                Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
                 logger.info("scheduling job-" + localCnIdentifier + " to start at " + zFmt.print(startTime));
                 scheduler.scheduleJob(job, trigger);
             } else {
@@ -221,7 +249,14 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         }
 
     }
-
+    /*
+     * Create the specific Trigger and Job that should be executed by Quartz
+     * only if the MN is UP and available for synchronization
+     * 
+     * @param NodeReference 
+     * @param Node
+     *
+     */
     private void addHarvest(NodeReference key, Node node, Date startDate) {
         if (node.getState().equals(NodeState.UP)
                 && node.isSynchronize() && node.getType().equals(NodeType.MN)) {
@@ -231,11 +266,12 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
 
             // Currently, the misfire configuration in the quartz.properties is 5 minutes
             // misfire will cause the trigger to be fired again until successful
-            JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity("job-" + key.getValue(), logGroupName).usingJobData("NodeIdentifier", key.getValue()).build();
-            Trigger trigger = newTrigger().withIdentity("trigger-" + key.getValue(), logGroupName).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
+            JobKey jobKey = new JobKey("job-" + key.getValue(), logGroupName);
             try {
-                JobKey jobKey = new JobKey("job-" + key.getValue(), logGroupName);
                 if (!scheduler.checkExists(jobKey)) {
+                    JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData("NodeIdentifier", key.getValue()).build();
+                    TriggerKey triggerKey = new TriggerKey("trigger-" + key.getValue(), logGroupName);
+                    Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
                     logger.info("scheduling job-" + key.getValue() + " to start at " + zFmt.print(startDate.getTime()));
                     scheduler.scheduleJob(job, trigger);
                 } else {
@@ -249,39 +285,52 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     }
     /*
      * monitor node additions
-     *
-     * additions to hazelcast should only be noted if an administrator approves a node(?)
-     *
+     * 
+     * if a node is added to nodelist, this will be triggered
+     * does nothing now
+     * 
+     * @param EntryEvent<NodeReference, Node>
+     * 
      */
 
     @Override
     public void entryAdded(EntryEvent<NodeReference, Node> event) {
         logger.info("Node Entry added key=" + event.getKey().getValue());
-/*        try {
-            Thread.sleep(2000L);
-        } catch (InterruptedException ex) {
-            Logger.getLogger(LogAggregationScheduleManager.class.getName()).log(Level.SEVERE, null, ex);
-        }
-
-        Partition partition = partitionService.getPartition(event.getKey());
-        Member ownerMember = partition.getOwner();
-
-        if (localMember.equals(ownerMember)) {
-            try {
-                this.manageHarvest();
-            } catch (SchedulerException ex) {
-                throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
-            }
-        } */
+        /*
+         * try { Thread.sleep(2000L); } catch (InterruptedException ex) {
+         * Logger.getLogger(LogAggregationScheduleManager.class.getName()).log(Level.SEVERE, null, ex); }
+         *
+         * Partition partition = partitionService.getPartition(event.getKey()); Member ownerMember =
+         * partition.getOwner();
+         *
+         * if (localMember.equals(ownerMember)) { try { this.manageHarvest(); } catch (SchedulerException ex) { throw
+         * new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage()); } }
+         */
     }
-
+    /*
+     * monitor node removals
+     * 
+     * if a node is removed from nodelist, this will be triggered
+     * does nothing now
+     * 
+     * @param EntryEvent<NodeReference, Node>
+     * 
+     */
     @Override
     public void entryRemoved(EntryEvent<NodeReference, Node> event) {
         logger.error("Entry removed key=" + event.getKey().getValue());
     }
+    
     /*
-     * monitor node changes updates to hazelcast should only be noted if updateNodeCapabilities is called on the CN
-     *
+     * monitor node changes updates to hazelcast 
+     * 
+     * should only be noted if updateNodeCapabilities is called on the CN, or if
+     * the nodeApproval tool is run by administrator
+     * 
+     * may result in recalculation of Quartz job scheduling
+     * if any nodes are determined to be locally owned
+     * 
+     * @param EntryEvent<NodeReference, Node>
      */
 
     @Override
@@ -469,9 +518,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
              * on the other hand, placeing them in the JobStore makes unit testing of LogAggregationRecoverJob easier.
              *
              */
-
-            JobDetail job = newJob(LogAggregationRecoverJob.class).withIdentity("job-recover" + localCnIdentifier, recoveryGroupName).usingJobData(jobDataMap).build();
-            Trigger trigger = newTrigger().withIdentity("trigger-recover" + localCnIdentifier, recoveryGroupName).startAt(startTime.toDate()).withSchedule(recoveryTriggerSchedule).build();
+            JobKey jobKey = new JobKey("recovery-job" + localCnIdentifier, recoveryGroupName);
+            TriggerKey triggerKey = new TriggerKey("recovery-trigger" + localCnIdentifier, recoveryGroupName);
+            JobDetail job = newJob(LogAggregationRecoverJob.class).withIdentity(jobKey).usingJobData(jobDataMap).build();
+            Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(recoveryTriggerSchedule).build();
             try {
                 scheduler.scheduleJob(job, trigger);
             } catch (SchedulerException ex) {
