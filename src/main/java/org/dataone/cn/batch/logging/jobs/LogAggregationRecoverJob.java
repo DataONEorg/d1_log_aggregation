@@ -257,10 +257,6 @@ public class LogAggregationRecoverJob implements Job {
         } catch (Exception ex) {
             ex.printStackTrace();
             logger.error(ex.getMessage());
-            jex = new JobExecutionException();
-            jex.refireImmediately();
-
-            jex.setStackTrace(ex.getStackTrace());
         }
         if (activateJob) {
             try {
@@ -278,12 +274,12 @@ public class LogAggregationRecoverJob implements Job {
         if (jex != null) {
             try {
                 // Want this to refire  after this thread ends, but after some delay
-                // lets wait 1/2 hr
-                Thread.sleep(1800000L);
+                // lets wait 5 minutes
+                Thread.sleep(300000L);
+                throw jex;
             } catch (InterruptedException ex) {
                 logger.warn("Tried to sleep before recovery job refires. But Interrupted :" + ex.getMessage());
             }
-            throw jex;
         }
 
     }

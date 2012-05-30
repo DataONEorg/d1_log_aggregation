@@ -47,7 +47,14 @@ import org.dataone.service.types.v1.Subject;
 import org.dataone.service.util.Constants;
 
 /**
- *
+ * Access to Objects may change
+ * Listen to the systemMetadata maps and if the accessibility of the object
+ * has changed, then all log records associated with the object
+ * must also change
+ * 
+ * All log records will need to be periodically swept for inconsistency
+ * should this listener go down
+ * 
  * @author waltz
  */
 public class SystemMetadataEntryListener implements EntryListener<Identifier, SystemMetadata> {
@@ -82,7 +89,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     @Override
     public void entryUpdated(EntryEvent<Identifier, SystemMetadata> event) {
-        if (event.getKey() != null && event.getValue() != null) {
+         boolean activateJob  = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+        if (event.getKey() != null && event.getValue() != null && activateJob) {
             SystemMetadata systemMetadata = event.getValue();
             logger.info("UPDATE EVENT - index task generator - system metadata callback invoked on pid: "
                     + event.getKey().getValue());
@@ -95,7 +103,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     @Override
     public void entryAdded(EntryEvent<Identifier, SystemMetadata> event) {
-        if (event.getKey() != null && event.getValue() != null) {
+         boolean activateJob  = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+        if (event.getKey() != null && event.getValue() != null & activateJob) {
             SystemMetadata systemMetadata = event.getValue();
             if (systemMetadata.getSerialVersion().longValue() == 1) {
                 logger.info("ADD EVENT - index task generator - system metadata callback invoked on pid: "
