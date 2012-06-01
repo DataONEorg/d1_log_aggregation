@@ -141,7 +141,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             NodeRegistryService nodeRegistryService = new NodeRegistryService();
             NodeAccess nodeAccess = new NodeAccess();
             // logger is not  be serializable, but no need to make it transient imo
-            logger.debug("called LogAggregatorTask");
+            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue());
             HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
             ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
             // Need the LinkedHashMap to preserver insertion order
@@ -162,7 +162,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 // from ListObjects and process before retrieving more
                 if (start == 0 || (start < total)) {
                     readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, midnight.toDate());
-                    logger.debug("found " + readQueue.size() + " entries");
+                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
                     List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(batchSize);
                     for (LogEntry logEntry : readQueue) {
                         if (logEntry.getDateLogged().after(lastLoggedDate)) {
@@ -183,7 +183,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
                                     subjectsAllowedRead.add(standardizedName);
                                 } catch (IllegalArgumentException ex) {
-                                    logger.warn("Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
+                                    logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
                                 }
                             }
                             if (systemMetadata.getAccessPolicy() != null) {
@@ -208,13 +208,13 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                                 // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
                                                 // without attempting to standardize it
                                                 subjectsAllowedRead.add(accessSubject.getValue());
-                                                logger.warn(accessSubject.getValue() +" does not conform to RFC2253 conventions");
+                                                logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + accessSubject.getValue() +" does not conform to RFC2253 conventions");
                                             }
                                         }
                                     }
                                 }
                             } else {
-                                logger.warn("SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
+                                logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
                             }
                             solrItem.setReadPermission(subjectsAllowedRead);
                         }
@@ -241,7 +241,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             // thread should sleep of 250MS
                             Thread.sleep(250L);
                         } catch (InterruptedException ex) {
-                            logger.warn(ex.getMessage());
+                            logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
                         }
                         startIndex = endIndex;
                     } while (endIndex < logEntrySolrItemList.size());
@@ -255,14 +255,15 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             return lastLoggedDate;
         } catch (ServiceFailure ex) {
             ex.printStackTrace();
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
             throw new ExecutionException(ex);
         } catch (NotFound ex) {
             ex.printStackTrace();
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
             throw new ExecutionException(ex);
         } catch (IllegalArgumentException ex) {
             ex.printStackTrace();
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
             throw new ExecutionException(ex);
         }
     }
@@ -290,7 +291,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         lastHarvestDateTime.addMillis(1);
         fromDate = lastHarvestDateTime.toDate();
 
-        logger.debug("starting retrieval " + mnUrl);
+        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + mnUrl);
         try {
 
             // always execute for the first run (for start = 0)
@@ -310,15 +311,15 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
             }
         } catch (NotAuthorized ex) {
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
         } catch (InvalidRequest ex) {
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
         } catch (NotImplemented ex) {
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
         } catch (ServiceFailure ex) {
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
         } catch (InvalidToken ex) {
-            logger.error(ex.serialize(ex.FMT_XML));
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
         }
 
         return writeQueue;

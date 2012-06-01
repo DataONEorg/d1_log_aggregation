@@ -95,7 +95,7 @@ public class LogAggregationRecoverJob implements Job {
 
             if (activateJob) {
                 Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size");
-                logger.info("executing with batch size " + batchSize);
+                logger.info(localCnIdentifier + " executing with batch size " + batchSize);
                 String recoveryCnUrl = null;
                 Future future = null;
 
@@ -107,7 +107,7 @@ public class LogAggregationRecoverJob implements Job {
                             if ((cnMap != null) && !cnMap.isEmpty()) {
                                 Node d1Node = nodeRegistryService.getNode(cnReference);
                                 String baseUrl = d1Node.getBaseURL();
-                                logger.debug("found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.ProcessingStateAttribute));
+                                logger.debug(localCnIdentifier +  " found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.ProcessingStateAttribute));
                                 ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.ProcessingStateAttribute));
                                 switch (logProcessingState) {
                                     case Active: {
@@ -165,7 +165,7 @@ public class LogAggregationRecoverJob implements Job {
                                                     cnRecoveryDate = dtUTC.toDate();
 
                                                 }
-                                                logger.debug("May recover from " + recoveringCnUrl + " from date " + format.format(cnRecoveryDate) + " if it is after " + format.format(latestRecoverableDate));
+                                                logger.debug(localCnIdentifier + " May recover from " + recoveringCnUrl + " from date " + format.format(cnRecoveryDate) + " if it is after " + format.format(latestRecoverableDate));
                                                 // One of the nodes is actively being recovered
                                                 // make certain that the last time the other CN ran
                                                 // is after the date when this cn last ran
@@ -174,12 +174,12 @@ public class LogAggregationRecoverJob implements Job {
 
                                                 if (cnRecoveryDate.after(latestRecoverableDate)) {
                                                     foundRecoveringNode = true;
-                                                    logger.debug("Found Recovering Node");
+                                                    logger.debug(localCnIdentifier + " Found Recovering Node");
                                                 }
                                             } catch (Exception e) {
                                                 e.printStackTrace();
                                                 // not active, node is down
-                                                logger.error("Node must be down " + e.getMessage());
+                                                logger.error(localCnIdentifier +  " Node must be down " + e.getMessage());
                                                 foundRecoveringNode = false;
                                             }
 
@@ -197,7 +197,7 @@ public class LogAggregationRecoverJob implements Job {
                 } while (recoveryCnUrl == null && foundRecoveringNode);
 
                 if (recoveryCnUrl == null) {
-                    throw new Exception("Unable to complete recovery because no nodes are available for recovery process");
+                    throw new Exception(localCnIdentifier +  " Unable to complete recovery because no nodes are available for recovery process");
                 }
                 // It would be nice to be able to inject the SolrServer. and implement
                 // a mock SolrServer for testing
@@ -212,7 +212,7 @@ public class LogAggregationRecoverJob implements Job {
 
                 Integer start = 0;
                 long total = 0;
-                logger.info("Starting recovery from " + recoveryCnUrl);
+                logger.info(localCnIdentifier +  " Starting recovery from " + recoveryCnUrl);
                 Date lastLogAggregatedDate = nodeAccess.getLogLastAggregated(localNodeReference);
                 Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
                 Boolean assignDate = false;
@@ -252,7 +252,7 @@ public class LogAggregationRecoverJob implements Job {
                 if (assignDate) {
                     nodeAccess.setLogLastAggregated(localNodeReference, lastLogAggregatedDate);
                 }
-                logger.info("LogAggregation is fully Recovered");
+                logger.info(localCnIdentifier +  " LogAggregation is fully Recovered");
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -262,7 +262,7 @@ public class LogAggregationRecoverJob implements Job {
             try {
 
                 nodeAccess.setProcessingState(localNodeReference, ProcessingState.Active);
-                logger.debug("Processing is now Active");
+                logger.debug(localCnIdentifier + " Processing is now Active");
             } catch (ServiceFailure ex) {
                 logger.error(ex);
             }
@@ -278,7 +278,7 @@ public class LogAggregationRecoverJob implements Job {
                 Thread.sleep(300000L);
                 throw jex;
             } catch (InterruptedException ex) {
-                logger.warn("Tried to sleep before recovery job refires. But Interrupted :" + ex.getMessage());
+                logger.warn(localCnIdentifier + " Tried to sleep before recovery job refires. But Interrupted :" + ex.getMessage());
             }
         }
 
