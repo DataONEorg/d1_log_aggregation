@@ -18,8 +18,6 @@
 package org.dataone.cn.batch.logging.jobs;
 
 import java.util.concurrent.Future;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dataone.configuration.Settings;
@@ -42,10 +40,10 @@ import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.cn.ldap.ProcessingState;
 import org.dataone.service.cn.impl.v1.NodeRegistryService;
-import org.dataone.service.types.v1.LogEntry;
 
 import org.dataone.service.types.v1.Node;
 import org.dataone.service.util.DateTimeMarshaller;
+import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 
@@ -79,14 +77,23 @@ public class LogAggregationRecoverJob implements Job {
 
         // do not submit the localCNIdentifier to Hazelcast for execution
         // rather execute it locally on the machine
+        Log logger = LogFactory.getLog(LogAggregationRecoverJob.class);
         boolean foundRecoveringNode = false;
         String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
+        
+        // this will initialize the https protocol of the solrserver client
+        // to read and send the x509 certificate
+        try {
+            CommonsHttpClientProtocolRegistry.createInstance();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            logger.error(ex.getMessage());
+        } 
         NodeReference localNodeReference = new NodeReference();
         localNodeReference.setValue(localCnIdentifier);
         SimpleDateFormat format =
                 new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
-        Log logger = LogFactory.getLog(LogAggregationRecoverJob.class);
-
+        
         JobExecutionException jex = null;
         NodeRegistryService nodeRegistryService = new NodeRegistryService();
         NodeAccess nodeAccess = new NodeAccess();
@@ -141,7 +148,7 @@ public class LogAggregationRecoverJob implements Job {
                                                 cnode.ping();
                                                 String recoveringCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
                                                 recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-
+                                                
                                                 CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
                                                 recoveringSolrServer.setConnectionTimeout(30000);
                                                 recoveringSolrServer.setSoTimeout(30000);
