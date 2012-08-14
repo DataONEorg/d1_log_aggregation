@@ -44,7 +44,7 @@ public class CommonsHttpClientProtocolRegistry {
             // This doesn't depend on the rest of jSSLutils and could use any
             // other SSLContext.
             SslContextedSecureProtocolSocketFactory secureProtocolSocketFactory =
-                    new SslContextedSecureProtocolSocketFactory( getSslClientContext());
+                    new SslContextedSecureProtocolSocketFactory( getSslClientContext(), false);
 
             Protocol.registerProtocol("https", new Protocol("https",
                     (ProtocolSocketFactory) secureProtocolSocketFactory, 443));
