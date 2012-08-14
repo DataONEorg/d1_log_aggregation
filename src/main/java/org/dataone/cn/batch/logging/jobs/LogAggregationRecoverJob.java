@@ -204,6 +204,10 @@ public class LogAggregationRecoverJob implements Job {
                 } while (recoveryCnUrl == null && foundRecoveringNode);
 
                 if (recoveryCnUrl == null) {
+                    // if there are no nodes available for recovery, then schedule this action to run again
+                    // in jex logic, there is a sleep defined.
+                    jex = new JobExecutionException();
+                    jex.refireImmediately();
                     throw new Exception(localCnIdentifier +  " Unable to complete recovery because no nodes are available for recovery process");
                 }
                 // It would be nice to be able to inject the SolrServer. and implement
