@@ -37,6 +37,8 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import javax.security.auth.x500.X500Principal;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
@@ -65,8 +67,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private IMap<Identifier, SystemMetadata> systemMetadata;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private SolrServer localhostSolrServer;
-    private ITopic<List<LogEntrySolrItem>> hzLogEntryTopic;
 
     public SystemMetadataEntryListener() {
     }
@@ -78,7 +80,6 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         hzclient = AggregationHazelcastClientInstance.getHazelcastClient();
         this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
-        this.hzLogEntryTopic = hazelcast.getTopic(HZ_LOGENTRY_TOPICNAME);
         logger.info("System Metadata size: " + this.systemMetadata.size());
     }
 
@@ -208,8 +209,9 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             }
             List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
             publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
-            hzLogEntryTopic.publish(publishEntrySolrItemList);
+            
             try {
+                indexLogEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
                 // Simple way to throttle publishing of messages
                 // thread should sleep of 250MS
                 Thread.sleep(250L);
@@ -227,7 +229,11 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     @Override
     public void entryRemoved(EntryEvent<Identifier, SystemMetadata> arg0) {
     }
-
+    
+    public BlockingQueue getIndexLogEntryQueue() {
+        return indexLogEntryQueue;
+    }
+    
     public HazelcastInstance getHazelcast() {
         return hazelcast;
     }
