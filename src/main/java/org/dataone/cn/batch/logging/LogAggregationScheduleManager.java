@@ -459,10 +459,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
                         ex.printStackTrace();
                     } 
 
-                    String recoveringCnUrl = localhostCNURL.substring(0, localhostCNURL.lastIndexOf("/cn"));
-                    recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-                    CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
-                    QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
+            //        String recoveringCnUrl = localhostCNURL.substring(0, localhostCNURL.lastIndexOf("/cn"));
+            //        recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+            //        CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
+                    QueryResponse queryResponse = localhostSolrServer.query(queryParams);
                     List<LogEntrySolrItem> logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
                     if (!logEntryList.isEmpty()) {
                         // there should only be one
