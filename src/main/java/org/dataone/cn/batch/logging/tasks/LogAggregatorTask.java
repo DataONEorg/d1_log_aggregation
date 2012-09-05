@@ -38,6 +38,7 @@ import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.client.auth.CertificateManager;
+import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.cn.ldap.NodeAccess;
@@ -96,10 +97,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         this.d1NodeReference = d1NodeReference;
         this.batchSize = batchSize;
     }
-
+    
     /**
-     * Implement the Callable interface, providing code retrieves logging information from a D1 Node
-     *
+     * Implement the Callable interface,  retrieves logging information from a D1 Node
+     * and publishes a List<LogEntrySolrItem> to a hazelcast topic
+     * 
+     * The logging information retrieved will not be for the current day, but for 
+     * a previous time period
+     * 
      * @return Date
      * @throws Exception
      * @author waltz
@@ -107,32 +112,34 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     @Override
     public Date call() throws ExecutionException {
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
+        LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
         try {
-
+            
             HazelcastInstance hzclient = HazelcastClientInstance.getHazelcastClient();
-            // midnight of the current date is the latest date until which we wish to retrieve data
-            DateTime midnight = new DateTime(DateTimeZone.UTC);
-            // for testing
-            //        midnight.minusMinutes(2);
+            // endDateTime is the latest datetime to which we wish to retrieve data
+            DateTime endDateTime = new DateTime(DateTimeZone.UTC);
+
+            // if offsets of the current time are not provided then assume midnight
+            // offsets are really only useful for testing
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
-                 // midnight is really now offset by a seconds found in config file
-                midnight.minusSeconds(triggerIntervalPeriod);
-                // midnight is really now offset by a minutes found in config file
+                 // endDateTime is really now offset by a seconds found in config file
+                endDateTime.minusSeconds(triggerIntervalPeriod);
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
-                midnight.minusMinutes(triggerIntervalPeriod);
+                // endDateTime is really now offset by a minutes found in config file
+                endDateTime.minusMinutes(triggerIntervalPeriod);
             } else {
-                // midnight is really midnight
-                midnight = midnight.withTime(0, 0, 0, 0);
+                // endDateTime is really midnight, or start of the day ( or however you would
+                // like to think about the break of a day)
+                // This means that the latest date to retrieve will be the last second of the
+                // previous day since the toDate variable of logRecords
+                // returns Records with a time stamp less than (<) the endDateTime provided
+                // see http://mule1.dataone.org/ArchitectureDocs-current/apis/MN_APIs.html#MNCore.getLogRecords
+                endDateTime = endDateTime.withTime(0, 0, 0, 0);
             }
 
 
             IMap<Identifier, SystemMetadata> systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
-            Subject publicSubject = new Subject();
-            publicSubject.setValue(Constants.SUBJECT_PUBLIC);
-            Subject authenticatedSubject = new Subject();
-            authenticatedSubject.setValue(Constants.SUBJECT_AUTHENTICATED_USER);
-            Subject verifiedSubject = new Subject();
-            verifiedSubject.setValue(Constants.SUBJECT_VERIFIED_USER);
+
             // we are going to write directly to ldap for the LogLastAggregated
             // because we do not want hazelcast to spam us about
             // all of these updates since we have a listener in HarvestSchedulingManager
@@ -161,7 +168,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 // read upto a 1000 objects (the default, but it can be overwritten)
                 // from ListObjects and process before retrieving more
                 if (start == 0 || (start < total)) {
-                    readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, midnight.toDate());
+                    readQueue = this.retrieve(d1NodeBaseUrl, lastMofidiedDate, endDateTime.toDate());
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
                     List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(batchSize);
                     for (LogEntry logEntry : readQueue) {
@@ -173,49 +180,9 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         solrItem.setDateAggregated(now);
                         SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
                         if (systemMetadata != null) {
-                            List<String> subjectsAllowedRead = new ArrayList<String>();
-                            // RightsHolder always has read permission
-                            // even if SystemMetadata does not have an AccessPolicy
-                            Subject rightsHolder = systemMetadata.getRightsHolder();
-                            if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-                                try {
-                                    String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
-
-                                    subjectsAllowedRead.add(standardizedName);
-                                } catch (IllegalArgumentException ex) {
-                                    logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
-                                }
-                            }
-                            if (systemMetadata.getAccessPolicy() != null) {
-                                List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
-                                for (AccessRule accessRule : allowList) {
-                                    List<Subject> subjectList = accessRule.getSubjectList();
-                                    for (Subject accessSubject : subjectList) {
-                                        if (accessSubject.equals(publicSubject)) {
-                                            // set Public access boolean on record, it is a shortcut
-                                            solrItem.setIsPublic(true);
-                                            subjectsAllowedRead.add(Constants.SUBJECT_PUBLIC);
-                                        } else if (accessSubject.equals(authenticatedSubject)) {
-                                            subjectsAllowedRead.add(Constants.SUBJECT_AUTHENTICATED_USER);
-                                        } else if (accessSubject.equals(verifiedSubject)) {
-                                            subjectsAllowedRead.add(Constants.SUBJECT_VERIFIED_USER);
-                                        } else {
-                                            try {
-                                                // add subject as having read access on the record
-                                                String standardizedName = CertificateManager.getInstance().standardizeDN(accessSubject.getValue());
-                                                subjectsAllowedRead.add(standardizedName);
-                                            } catch (IllegalArgumentException ex) {
-                                                // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
-                                                // without attempting to standardize it
-                                                subjectsAllowedRead.add(accessSubject.getValue());
-                                                logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + accessSubject.getValue() +" does not conform to RFC2253 conventions");
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " SystemMetadata with pid " + logEntry.getIdentifier().getValue() + " does not have an access policy");
-                            }
+                            boolean isPublicSubject = false;
+                            List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
+                            solrItem.setIsPublic(isPublicSubject);
                             solrItem.setReadPermission(subjectsAllowedRead);
                         }
                         Long integral = new Long(now.getTime());
@@ -238,7 +205,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         hzLogEntryTopic.publish(publishEntrySolrItemList);
                         try {
                             // Simple way to throttle publishing of messages
-                            // thread should sleep of 250MS
+                            // thread should sleep for 250MS
                             Thread.sleep(250L);
                         } catch (InterruptedException ex) {
                             logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
