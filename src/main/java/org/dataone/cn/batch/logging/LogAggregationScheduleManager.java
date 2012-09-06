@@ -64,8 +64,11 @@ import com.hazelcast.core.IMap;
 import org.quartz.JobDetail;
 import org.dataone.cn.batch.logging.jobs.LogAggregationHarvestJob;
 import com.hazelcast.core.HazelcastInstance;
+import java.net.MalformedURLException;
 import java.util.Set;
+import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.dataone.cn.hazelcast.HazelcastLdapStore;
+import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
 import org.quartz.JobKey;
 import org.quartz.Scheduler;
 import org.quartz.SchedulerException;
@@ -95,6 +98,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     private String clientCertificateLocation =
             Settings.getConfiguration().getString("D1Client.certificate.directory")
             + File.separator + Settings.getConfiguration().getString("D1Client.certificate.filename");
+    private String localhostCNURL = Settings.getConfiguration().getString("D1Client.CN_URL");
     public static Log logger = LogFactory.getLog(LogAggregationScheduleManager.class);
     // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
@@ -171,6 +175,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
             hzNodes.addEntryListener(this, true);
         } catch (SolrServerException ex) {
+            ex.printStackTrace();
             throw new IllegalStateException("SolrServer connection failed: " + ex.getMessage());
         } catch (IOException ex) {
             throw new IllegalStateException("Loading properties file failedUnable to initialize jobs for scheduling: " + ex.getMessage());
@@ -413,7 +418,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      * log entries end
      *
      */
-    public void scheduleRecoveryJob() throws SolrServerException, ServiceFailure {
+    public void scheduleRecoveryJob() throws SolrServerException, ServiceFailure, MalformedURLException {
         Boolean recovery = false;
         String recoveryQuery = "";
         NodeAccess nodeAccess = new NodeAccess();
@@ -446,8 +451,21 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
                     queryParams.setSortField("dateAggregated", SolrQuery.ORDER.desc);
                     queryParams.setStart(0);
                     queryParams.setRows(1);
-
-                    QueryResponse queryResponse = localhostSolrServer.query(queryParams);
+                    // this will initialize the https protocol of the solrserver client
+                    // to read and send the x509 certificate
+                    try {
+                        CommonsHttpClientProtocolRegistry.createInstance();
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    } 
+                    //
+                    // must use https connection because the select filter will require the cn node
+                    // subject in order to correctly configure the parameters
+                    //
+                    String recoveringCnUrl = localhostCNURL.substring(0, localhostCNURL.lastIndexOf("/cn"));
+                    recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+                    CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
+                    QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
                     List<LogEntrySolrItem> logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
                     if (!logEntryList.isEmpty()) {
                         // there should only be one

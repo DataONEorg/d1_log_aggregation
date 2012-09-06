@@ -5,7 +5,7 @@
     <artifactId>d1_log_aggregation</artifactId>
     <packaging>jar</packaging>
     <name>DataONE_Log_Aggregation</name>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <description>Cn DataONE Logging Aggregation</description>
     <url>http://dataone.org</url>
     <properties>
@@ -15,7 +15,7 @@
         <solr.version>3.4.0</solr.version>
         <hazelcast.version>1.9.4.6</hazelcast.version>
         <d1_libclient_version>1.0.3</d1_libclient_version>
-        <d1_cn_noderegistry_version>1.0.1</d1_cn_noderegistry_version>
+        <d1_cn_noderegistry_version>1.0.2</d1_cn_noderegistry_version>
     </properties>
     <build>
         <plugins>
@@ -192,6 +192,29 @@
             <artifactId>d1_cn_noderegistry</artifactId>
             <version>${d1_cn_noderegistry_version}</version>
             <type>jar</type>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jsslutils</groupId>
+            <artifactId>jsslutils</artifactId>
+            <version>1.0.7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jsslutils</groupId>
+            <artifactId>jsslutils-extra-apachehttpclient3</artifactId>
+            <version>1.0.7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk16</artifactId>
+            <version>${bouncycastle.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcmail-jdk16</artifactId>
+            <version>${bouncycastle.version}</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
     <licenses>

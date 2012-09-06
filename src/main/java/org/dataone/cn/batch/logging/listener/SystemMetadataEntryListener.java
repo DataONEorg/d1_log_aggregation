@@ -37,10 +37,13 @@ import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import javax.security.auth.x500.X500Principal;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.service.types.v1.AccessRule;
 import org.dataone.service.types.v1.Subject;
@@ -65,9 +68,9 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private IMap<Identifier, SystemMetadata> systemMetadata;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private SolrServer localhostSolrServer;
-    private ITopic<List<LogEntrySolrItem>> hzLogEntryTopic;
-
+    private LogAccessRestriction logAccessRestriction;
     public SystemMetadataEntryListener() {
     }
 
@@ -78,7 +81,6 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         hzclient = AggregationHazelcastClientInstance.getHazelcastClient();
         this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
-        this.hzLogEntryTopic = hazelcast.getTopic(HZ_LOGENTRY_TOPICNAME);
         logger.info("System Metadata size: " + this.systemMetadata.size());
     }
 
@@ -151,47 +153,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     private void processLogEntries(List<LogEntrySolrItem> logEntrySolrItemList, SystemMetadata systemMetadata) {
         boolean isPublicSubject = false;
-        Subject publicSubject = new Subject();
-        publicSubject.setValue(Constants.SUBJECT_PUBLIC);
-        List<String> subjectsAllowedRead = new ArrayList<String>();
-        // RightsHolder always has read permission
-        // even if SystemMetadata does not have an AccessPolicy
-        Subject rightsHolder = systemMetadata.getRightsHolder();
-        if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-            try {
-                X500Principal principal = new X500Principal(rightsHolder.getValue());
-                String standardizedName = principal.getName(X500Principal.RFC2253);
-                subjectsAllowedRead.add(standardizedName);
-            } catch (IllegalArgumentException ex) {
-                logger.warn("Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
-            }
-        }
 
-        if (systemMetadata.getAccessPolicy() != null) {
-            List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
-
-            for (AccessRule accessRule : allowList) {
-                List<Subject> subjectList = accessRule.getSubjectList();
-                for (Subject accessSubject : subjectList) {
-                    if (accessSubject.equals(publicSubject)) {
-                        // set Public access boolean on record
-                        isPublicSubject = true;
-                    } else {
-                        try {
-                            // add subject as having read access on the record
-                            X500Principal principal = new X500Principal(accessSubject.getValue());
-                            String standardizedName = principal.getName(X500Principal.RFC2253);
-                            subjectsAllowedRead.add(standardizedName);
-                        } catch (IllegalArgumentException ex) {
-                            logger.warn("Found improperly formatted access policy subject: " + accessSubject.getValue() + "\n" + ex.getMessage());
-                        }
-                    }
-                }
-            }
-
-        } else {
-            logger.warn("SystemMetadata with pid " + systemMetadata.getIdentifier().getValue() + " does not have an access policy");
-        }
+        List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
         for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
             solrItem.setIsPublic(isPublicSubject);
             solrItem.setReadPermission(subjectsAllowedRead);
@@ -208,8 +171,9 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             }
             List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
             publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
-            hzLogEntryTopic.publish(publishEntrySolrItemList);
+            
             try {
+                indexLogEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
                 // Simple way to throttle publishing of messages
                 // thread should sleep of 250MS
                 Thread.sleep(250L);
@@ -228,6 +192,10 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     public void entryRemoved(EntryEvent<Identifier, SystemMetadata> arg0) {
     }
 
+    public BlockingQueue getIndexLogEntryQueue() {
+        return indexLogEntryQueue;
+    }
+    
     public HazelcastInstance getHazelcast() {
         return hazelcast;
     }
@@ -235,4 +203,13 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     public void setHazelcast(HazelcastInstance hazelcast) {
         this.hazelcast = hazelcast;
     }
+
+    public LogAccessRestriction getLogAccessRestriction() {
+        return logAccessRestriction;
+	}
+
+    public void setLogAccessRestriction(LogAccessRestriction logAccessRestriction) {
+        this.logAccessRestriction = logAccessRestriction;
+    }
+    
 }
