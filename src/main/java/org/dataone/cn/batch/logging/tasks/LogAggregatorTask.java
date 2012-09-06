@@ -164,6 +164,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             if (d1Node.getType().equals(NodeType.CN)) {
                 d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
             }
+            logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 // read upto a 1000 objects (the default, but it can be overwritten)
                 // from ListObjects and process before retrieving more
@@ -258,7 +259,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         lastHarvestDateTime.addMillis(1);
         fromDate = lastHarvestDateTime.toDate();
 
-        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + mnUrl);
+        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval from " + start);
         try {
 
             // always execute for the first run (for start = 0)
