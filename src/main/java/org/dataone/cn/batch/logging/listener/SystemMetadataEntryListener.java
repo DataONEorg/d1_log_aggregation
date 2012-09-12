@@ -196,6 +196,10 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         return indexLogEntryQueue;
     }
     
+    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
+        this.indexLogEntryQueue = indexLogEntryQueue;
+    }
+    
     public HazelcastInstance getHazelcast() {
         return hazelcast;
     }
