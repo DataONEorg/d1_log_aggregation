@@ -94,7 +94,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
          boolean activateJob  = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
         if (event.getKey() != null && event.getValue() != null && activateJob) {
             SystemMetadata systemMetadata = event.getValue();
-            logger.info("UPDATE EVENT - index task generator - system metadata callback invoked on pid: "
+            logger.debug("UPDATE EVENT - index task generator - system metadata callback invoked on pid: "
                     + event.getKey().getValue());
             List<LogEntrySolrItem> publishLogEntryList = retrieveLogEntries(event.getKey().getValue());
             if (!publishLogEntryList.isEmpty()) {
@@ -109,7 +109,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         if (event.getKey() != null && event.getValue() != null & activateJob) {
             SystemMetadata systemMetadata = event.getValue();
             if (systemMetadata.getSerialVersion().longValue() == 1) {
-                logger.info("ADD EVENT - index task generator - system metadata callback invoked on pid: "
+                logger.debug("ADD EVENT - index task generator - system metadata callback invoked on pid: "
                         + event.getKey().getValue());
                 List<LogEntrySolrItem> publishLogEntryList = retrieveLogEntries(event.getKey().getValue());
                 if (!publishLogEntryList.isEmpty()) {
@@ -174,6 +174,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             
             try {
                 indexLogEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
+                logger.info("OFFERING - " + publishEntrySolrItemList.size() + " entries for pid: " +
+                    systemMetadata.getIdentifier().getValue());
                 // Simple way to throttle publishing of messages
                 // thread should sleep of 250MS
                 Thread.sleep(250L);
