@@ -269,9 +269,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             logList = mNode.getLogRecords(session, fromDate, toDate, null, null, start, batchSize);
             // if objectList is null or the count is 0 or the list is empty, then
             // there is nothing to process
-            if (!((logList == null)
-                    || (logList.getCount() == 0)
-                    || (logList.getLogEntryList().isEmpty()))) {
+            if ( (logList != null)
+                 && (logList.getCount() > 0)
+                 && (logList.getLogEntryList() != null)
+                 && (!logList.getLogEntryList().isEmpty())) {
 
                 start += logList.getCount();
                 writeQueue.addAll(logList.getLogEntryList());
