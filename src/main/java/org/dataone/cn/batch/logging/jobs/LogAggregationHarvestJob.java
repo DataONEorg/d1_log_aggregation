@@ -91,13 +91,12 @@ public class LogAggregationHarvestJob implements Job {
                 }
 
 
-                Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size");
-                logger.info("executing for " + nodeIdentifier + " with batch size " + batchSize);
+                logger.info("executing for " + nodeIdentifier);
                 nodeLocked = hzLogAggregatorLockMap.tryLock(lockName, 500L, TimeUnit.MILLISECONDS);
                 Future future = null;
                 if (nodeLocked) {
 
-                    LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference, batchSize);
+                    LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference);
                     // If the node reference is the local machine nodId, then
                     // do not submit to hazelcast for distribution
                     // Rather, execute it on the local machine
