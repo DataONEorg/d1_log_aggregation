@@ -17,7 +17,6 @@
  */
 package org.dataone.cn.batch.logging.jobs;
 
-import java.util.concurrent.Future;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dataone.configuration.Settings;
@@ -104,7 +103,6 @@ public class LogAggregationRecoverJob implements Job {
                 Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size");
                 logger.info(localCnIdentifier + " executing with batch size " + batchSize);
                 String recoveryCnUrl = null;
-                Future future = null;
 
                 do {
                     Map<NodeReference, Map<String, String>> recoveryMap = nodeAccess.getCnLoggingStatus();
