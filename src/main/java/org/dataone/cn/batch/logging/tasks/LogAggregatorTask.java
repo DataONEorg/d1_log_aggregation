@@ -38,7 +38,7 @@ import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.client.auth.CertificateManager;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
-import org.dataone.cn.batch.logging.exceptions.TryQueryAgain;
+import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
@@ -189,7 +189,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 try {
                     readQueue = this.retrieve(mNode);
                     queryFailures = 0;
-                } catch (TryQueryAgain e) {
+                } catch (QueryLimitException e) {
                     tryAgain = true;
                 } catch (Exception e) {
                     if (queryFailures < 5) {
@@ -286,7 +286,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      * 
      * @return List<LogEntry>
      */
-    private List<LogEntry> retrieve(MNode mNode) throws NotAuthorized, InvalidRequest, NotImplemented, ServiceFailure, InvalidToken, TryQueryAgain {
+    private List<LogEntry> retrieve(MNode mNode) throws NotAuthorized, InvalidRequest, NotImplemented, ServiceFailure, InvalidToken, QueryLimitException {
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         List<LogEntry> writeQueue = new ArrayList<LogEntry>();
@@ -325,7 +325,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         LogQueryDateRange earlyRecordDate = new LogQueryDateRange(logQueryDateRange.getFromDate(), new Date(medianTime));
                         logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "early push start " + format.format(earlyRecordDate.getFromDate()) + " end " + format.format(earlyRecordDate.getToDate()));
                         logQueryStack.push(earlyRecordDate);
-                        throw new TryQueryAgain();
+                        throw new QueryLimitException();
                     }
                     if ((logList.getCount() > 0)
                             && (logList.getLogEntryList() != null)
