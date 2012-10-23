@@ -8,6 +8,6 @@ package org.dataone.cn.batch.logging.exceptions;
  *
  * @author waltz
  */
-public class TryQueryAgain extends Exception {
+public class QueryLimitException extends Exception {
     
 }
