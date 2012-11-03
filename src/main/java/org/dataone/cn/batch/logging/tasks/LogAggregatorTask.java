@@ -38,6 +38,7 @@ import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.client.auth.CertificateManager;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
+import org.dataone.cn.batch.logging.NodeRegistryPool;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
@@ -150,8 +151,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             // all of these updates since we have a listener in HarvestSchedulingManager
             // that determines when updates/additions have occured and
             // re-adjusts scheduling
-            NodeRegistryService nodeRegistryService = new NodeRegistryService();
-            NodeAccess nodeAccess = new NodeAccess();
+            NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(d1NodeReference.getValue());
+            NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
             // logger is not  be serializable, but no need to make it transient imo
             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue());
             HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
