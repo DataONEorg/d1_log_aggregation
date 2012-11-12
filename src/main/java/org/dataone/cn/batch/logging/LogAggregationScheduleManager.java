@@ -603,4 +603,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     public void setSystemMetadataEntryListener(SystemMetadataEntryListener systemMetadataEntryListener) {
         this.systemMetadataEntryListener = systemMetadataEntryListener;
     }
+
+    @Override
+    public void migrationFailed(MigrationEvent migrationEvent) {
+        logger.warn("migrationFailed " + migrationEvent.getPartitionId());
+    }
 }
