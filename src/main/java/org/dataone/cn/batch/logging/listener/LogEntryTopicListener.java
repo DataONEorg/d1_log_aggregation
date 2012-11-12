@@ -19,6 +19,7 @@ package org.dataone.cn.batch.logging.listener;
 
 import com.hazelcast.core.ITopic;
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.Message;
 import com.hazelcast.core.MessageListener;
 import org.dataone.service.types.v1.LogEntry;
 import java.util.concurrent.BlockingQueue;
@@ -51,20 +52,6 @@ public class LogEntryTopicListener implements MessageListener<List<LogEntrySolrI
         topic.addMessageListener(this);
     }
 
-    @Override
-    public void onMessage(List<LogEntrySolrItem> logList) {
-        boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
-        if (activateJob) {
-            try {
-                indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
-            } catch (InterruptedException ex) {
-                for (LogEntrySolrItem e : logList) {
-                    logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
-                }
-            }
-        }
-    }
-
     public BlockingQueue getIndexLogEntryQueue() {
         return indexLogEntryQueue;
     }
@@ -79,5 +66,22 @@ public class LogEntryTopicListener implements MessageListener<List<LogEntrySolrI
 
     public void setHazelcast(HazelcastInstance hazelcast) {
         this.hazelcast = hazelcast;
+    }
+
+    @Override
+    public void onMessage(Message<List<LogEntrySolrItem>> message) {
+        boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+        if (activateJob) {
+            
+            List<LogEntrySolrItem> logList = message.getMessageObject();
+            try {
+                indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                for (LogEntrySolrItem e : logList) {
+                    logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+                }
+            }
+        }
+        throw new UnsupportedOperationException("Not supported yet.");
     }
 }
