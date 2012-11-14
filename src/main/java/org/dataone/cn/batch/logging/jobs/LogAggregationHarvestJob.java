@@ -39,6 +39,7 @@ import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
+import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
@@ -84,7 +85,7 @@ public class LogAggregationHarvestJob implements Job {
                 // Locking on the default instance.
                 // The locking mechanism can not be on the nodeList
                 // since synchronization uses locking on the nodeList
-                HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
+                HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
                 hzLogAggregatorLockMap = hazelcast.getMap(hzLogAggregationLockMapString);
                 if (hzLogAggregatorLockMap.get(lockName) == null) {
                     hzLogAggregatorLockMap.put(lockName, "1");
