@@ -43,6 +43,7 @@ import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
+import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 
 import org.dataone.configuration.Settings;
@@ -155,7 +156,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
             // logger is not  be serializable, but no need to make it transient imo
             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue());
-            HazelcastInstance hazelcast = Hazelcast.getDefaultInstance();
+            HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
             ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
             // Need the LinkedHashMap to preserver insertion order
             Node d1Node = nodeRegistryService.getNode(d1NodeReference);
