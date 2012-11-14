@@ -22,6 +22,7 @@
 
 package org.dataone.cn.batch.logging.listener;
 
+import com.hazelcast.client.ClientConfig;
 import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.config.ClasspathXmlConfig;
 import java.io.FileNotFoundException;
@@ -73,8 +74,12 @@ public class AggregationHazelcastClientInstance {
             }
 
             logger.info("group " + clientConfiguration.getGroup() + " pwd " + clientConfiguration.getPassword() + " addresses " + clientConfiguration.getLocalhost());
-            hzclient = HazelcastClient.newHazelcastClient(clientConfiguration.getGroup(), clientConfiguration.getPassword(),
-                    clientConfiguration.getLocalhost());
+
+            ClientConfig cc = new ClientConfig();
+            cc.getGroupConfig().setName(clientConfiguration.getGroup());
+            cc.getGroupConfig().setPassword(clientConfiguration.getPassword());
+            cc.addAddress(clientConfiguration.getLocalhost());
+            hzclient = HazelcastClient.newHazelcastClient(cc);
         }
         return hzclient;
     }
