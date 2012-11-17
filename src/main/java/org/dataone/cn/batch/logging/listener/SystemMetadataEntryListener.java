@@ -45,6 +45,7 @@ import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
+import org.dataone.cn.hazelcast.HazelcastClientFactory;
 import org.dataone.service.types.v1.AccessRule;
 import org.dataone.service.types.v1.Subject;
 import org.dataone.service.util.Constants;
@@ -63,7 +64,7 @@ import org.dataone.service.util.Constants;
 public class SystemMetadataEntryListener implements EntryListener<Identifier, SystemMetadata> {
 
     private static Logger logger = Logger.getLogger(SystemMetadataEntryListener.class.getName());
-    private static HazelcastInstance hzclient;
+    private static HazelcastClient hzclient;
     private HazelcastInstance hazelcast;
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
@@ -78,7 +79,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         logger.info("starting systemMetadata entry listener...");
         logger.info("System Metadata value: " + HZ_SYSTEM_METADATA);
 
-        hzclient = AggregationHazelcastClientInstance.getHazelcastClient();
+        hzclient = HazelcastClientFactory.getStorageClient();
         this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
         logger.info("System Metadata size: " + this.systemMetadata.size());

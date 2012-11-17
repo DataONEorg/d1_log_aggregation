@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<hazelcast xsi:schemaLocation="http://www.hazelcast.com/schema/config  hazelcast-config-2.4.xsd"
+  xmlns="http://www.hazelcast.com/schema/config"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <!--
+      Temporary until the hzNodes moves to metacat.  this is only used
+      to configure Node controller to talk with hzNodes
+    -->
+  <group>
+    <name>devProcess</name>
+    <password>dataone</password>
+  </group>
+
+  <network>
+    <port auto-increment="false">5832</port>
+    <join>
+      <multicast enabled="false">
+        <multicast-group>224.2.2.3</multicast-group>
+        <multicast-port>54327</multicast-port>
+      </multicast>
+      <tcp-ip enabled="true">
+        <interface>127.0.0.1</interface>
+      </tcp-ip>
+    </join>
+    </network>
+
+  </map>
+</hazelcast>
+

@@ -16,7 +16,6 @@
         Purpose of the document follows.
 -->
 
-<!--    <bean id="hazelcastInstance" class="org.dataone.cn.hazelcast.HazelcastInstanceInvokingBean" factory-method="getHazelcast"/> -->
     <import resource="classpath:/org/dataone/configuration/hazelcastTestInstanceContext.xml" />
     <bean id="mylog" class="org.springframework.beans.factory.config.CommonsLogFactoryBean">
         <property name="logName" value="log"/>
