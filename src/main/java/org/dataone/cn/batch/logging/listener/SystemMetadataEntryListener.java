@@ -218,5 +218,13 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     public void setLogAccessRestriction(LogAccessRestriction logAccessRestriction) {
         this.logAccessRestriction = logAccessRestriction;
     }
+
+    public SolrServer getLocalhostSolrServer() {
+        return localhostSolrServer;
+    }
+
+    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
+        this.localhostSolrServer = localhostSolrServer;
+    }
     
 }
