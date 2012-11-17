@@ -82,6 +82,5 @@ public class LogEntryTopicListener implements MessageListener<List<LogEntrySolrI
                 }
             }
         }
-        throw new UnsupportedOperationException("Not supported yet.");
     }
 }

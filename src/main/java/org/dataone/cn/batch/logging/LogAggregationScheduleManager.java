@@ -151,7 +151,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             }
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
-            partitionService = Hazelcast.getPartitionService();
+            partitionService = hazelcast.getPartitionService();
 
             localMember = hazelcast.getCluster().getLocalMember();
             hazelcastLdapStore.loadAllKeys();
@@ -382,7 +382,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
         // try to determine if a Node has migrated home servers
         if (localMember.equals(migrationEvent.getNewOwner()) || localMember.equals(migrationEvent.getOldOwner())) {
             Integer partitionId = migrationEvent.getPartitionId();
-            PartitionService partitionService = Hazelcast.getPartitionService();
+            PartitionService partitionService = hazelcast.getPartitionService();
 
             IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
 

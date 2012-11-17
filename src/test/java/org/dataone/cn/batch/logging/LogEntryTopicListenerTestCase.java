@@ -22,6 +22,8 @@
 
 package org.dataone.cn.batch.logging;
 
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.core.Hazelcast;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Date;
@@ -36,6 +38,7 @@ import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.util.TypeMarshaller;
 import org.jibx.runtime.JiBXException;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -54,7 +57,11 @@ public class LogEntryTopicListenerTestCase {
 
     private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
-
+    @AfterClass
+    public static void shutdownHazelcast() {
+        Hazelcast.shutdownAll();
+        HazelcastClient.shutdownAll();
+    }
     private HazelcastInstance hzInstance;
     @Resource
     public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
@@ -66,8 +73,8 @@ public class LogEntryTopicListenerTestCase {
         this.logEntryItemResource = logEntryItemResource;
     }
     @Resource
-    public void setHzInstance(HazelcastInstance hzInstance) {
-        this.hzInstance = hzInstance;
+    public void setHzInstance(HazelcastInstance hazelcastInstance) {
+        this.hzInstance = hazelcastInstance;
     }
     @Before
     public void initQueue() {

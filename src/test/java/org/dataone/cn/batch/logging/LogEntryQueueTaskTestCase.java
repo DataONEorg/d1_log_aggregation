@@ -22,6 +22,8 @@
 
 package org.dataone.cn.batch.logging;
 
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.core.Hazelcast;
 import java.util.ArrayList;
 import java.util.Date;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -44,6 +46,7 @@ import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.util.TypeMarshaller;
 import org.jibx.runtime.JiBXException;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -76,6 +79,11 @@ public class LogEntryQueueTaskTestCase {
     private ThreadPoolTaskExecutor logIndexingThreadPoolTaskExecutor;
 
     private MockSolrServer httpSolrServer;
+    @AfterClass
+    public static void shutdownHazelcast() {
+        Hazelcast.shutdownAll();
+        HazelcastClient.shutdownAll();
+    }
     @Resource
     public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
@@ -86,8 +94,8 @@ public class LogEntryQueueTaskTestCase {
         this.logEntryItemResource = logEntryItemResource;
     }
     @Resource
-    public void setHzInstance(HazelcastInstance hzInstance) {
-        this.hzInstance = hzInstance;
+    public void setHzInstance(HazelcastInstance hazelcastInstance) {
+        this.hzInstance = hazelcastInstance;
     }
     @Resource
     public void setLogEntryQueueTask(LogEntryQueueTask logEntryQueueTask) {
