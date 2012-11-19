@@ -6,10 +6,8 @@ package org.dataone.cn.batch.logging;
 
 import java.util.ArrayList;
 import java.util.List;
-import javax.security.auth.x500.X500Principal;
 import org.apache.log4j.Logger;
 import org.dataone.client.auth.CertificateManager;
-import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
 import org.dataone.service.types.v1.AccessRule;
 import org.dataone.service.types.v1.Permission;
 import org.dataone.service.types.v1.Subject;

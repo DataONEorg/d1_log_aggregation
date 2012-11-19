@@ -24,7 +24,6 @@ package org.dataone.cn.batch.logging.listener;
 
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
-import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.SystemMetadata;
@@ -32,23 +31,23 @@ import org.dataone.service.types.v1.SystemMetadata;
 import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
-import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
-import com.hazelcast.core.ITopic;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import javax.security.auth.x500.X500Principal;
+import org.apache.commons.codec.EncoderException;
+import org.apache.commons.codec.net.URLCodec;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
+import org.apache.solr.client.solrj.util.ClientUtils;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.hazelcast.HazelcastClientFactory;
-import org.dataone.service.types.v1.AccessRule;
-import org.dataone.service.types.v1.Subject;
-import org.dataone.service.util.Constants;
+import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
 
 /**
  * Access to Objects may change
@@ -65,20 +64,39 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     private static Logger logger = Logger.getLogger(SystemMetadataEntryListener.class.getName());
     private static HazelcastClient hzclient;
-    private HazelcastInstance hazelcast;
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private IMap<Identifier, SystemMetadata> systemMetadata;
     private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private SolrServer localhostSolrServer;
     private LogAccessRestriction logAccessRestriction;
+    private URLCodec urlCodec = new URLCodec("UTF-8");
     public SystemMetadataEntryListener() {
+      String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
+        String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
+        localhostCNURL += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+        
+        try {
+            localhostSolrServer = new CommonsHttpSolrServer(localhostCNURL);
+        } catch (MalformedURLException ex) {
+            ex.printStackTrace();
+            logger.error(ex.getMessage());
+            throw new RuntimeException();
+        }
+        try {
+            CommonsHttpClientProtocolRegistry.createInstance();
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            logger.error(ex.getMessage());
+            throw new RuntimeException();
+        }
+        logAccessRestriction = new LogAccessRestriction();
     }
 
     public void start() {
         logger.info("starting systemMetadata entry listener...");
         logger.info("System Metadata value: " + HZ_SYSTEM_METADATA);
-
+  
         hzclient = HazelcastClientFactory.getStorageClient();
         this.systemMetadata = hzclient.getMap(HZ_SYSTEM_METADATA);
         this.systemMetadata.addEntryListener(this, true);
@@ -122,13 +140,18 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     private List<LogEntrySolrItem> retrieveLogEntries(String pid) {
         List<LogEntrySolrItem> completeLogEntrySolrItemList = new ArrayList<LogEntrySolrItem>();
+
+        String escapedPID = ClientUtils.escapeQueryChars(pid);
+        logger.debug(escapedPID);
+
         SolrQuery queryParams = new SolrQuery();
-        queryParams.setQuery("pid: " + pid);
+        queryParams.setQuery("pid:" + escapedPID );
         queryParams.setStart(0);
         queryParams.setRows(1000);
 
         QueryResponse queryResponse;
         try {
+            logger.debug(queryParams.getQuery());
             queryResponse = localhostSolrServer.query(queryParams);
 
             List<LogEntrySolrItem> logEntrySolrItemList = queryResponse.getBeans(LogEntrySolrItem.class);
@@ -149,6 +172,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             ex.printStackTrace();
             logger.error(ex.getMessage());
         }
+        logger.debug("returning # log entries to modify: " + completeLogEntrySolrItemList.size());
         return completeLogEntrySolrItemList;
     }
 
@@ -202,29 +226,5 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
         this.indexLogEntryQueue = indexLogEntryQueue;
     }
-    
-    public HazelcastInstance getHazelcast() {
-        return hazelcast;
-    }
-
-    public void setHazelcast(HazelcastInstance hazelcast) {
-        this.hazelcast = hazelcast;
-    }
-
-    public LogAccessRestriction getLogAccessRestriction() {
-        return logAccessRestriction;
-    }
-
-    public void setLogAccessRestriction(LogAccessRestriction logAccessRestriction) {
-        this.logAccessRestriction = logAccessRestriction;
-    }
-
-    public SolrServer getLocalhostSolrServer() {
-        return localhostSolrServer;
-    }
-
-    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
-        this.localhostSolrServer = localhostSolrServer;
-    }
-    
+   
 }

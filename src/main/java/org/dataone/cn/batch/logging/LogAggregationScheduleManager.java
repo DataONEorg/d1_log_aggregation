@@ -136,6 +136,14 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      */
     public void init() {
         try {
+            // this will initialize the https protocol of the solrserver client
+            // to read and send the x509 certificate
+            try {
+                CommonsHttpClientProtocolRegistry.createInstance();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                logger.error(ex.getMessage());
+            } 
             // log aggregregation should ideally execute at least once per day per membernode
             // Sets the Period of time between sequential job executions, 24 hrs is default
             int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
