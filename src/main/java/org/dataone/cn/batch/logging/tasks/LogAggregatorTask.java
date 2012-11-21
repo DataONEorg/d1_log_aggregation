@@ -220,10 +220,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         }
                         Date now = new Date();
                         LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
+                        boolean isPublicSubject = false;
+                        solrItem.setIsPublic(isPublicSubject);
                         solrItem.setDateAggregated(now);
                         SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
                         if (systemMetadata != null) {
-                            boolean isPublicSubject = false;
                             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
                             solrItem.setIsPublic(isPublicSubject);
                             solrItem.setReadPermission(subjectsAllowedRead);
