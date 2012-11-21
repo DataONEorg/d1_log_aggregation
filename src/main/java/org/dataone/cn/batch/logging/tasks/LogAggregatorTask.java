@@ -226,7 +226,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
                         if (systemMetadata != null) {
                             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
-                            solrItem.setIsPublic(isPublicSubject);
                             solrItem.setReadPermission(subjectsAllowedRead);
                         }
                         Long integral = new Long(now.getTime());
