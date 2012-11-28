@@ -123,7 +123,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes");
     // Amount of time to delay the start the recovery job at initialization
     static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes");
-
+    private static final String hzNodesName = Settings.getConfiguration().getString("dataone.hazelcast.nodes");
     /* 
      * Called by Spring to bootstrap log aggregation
      * it will set up default intervals between job executions for Membernode harvesting
@@ -180,7 +180,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             systemMetadataEntryListener.start();
             this.manageHarvest();
             partitionService.addMigrationListener(this);
-            IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
+            IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
             hzNodes.addEntryListener(this, true);
         } catch (SolrServerException ex) {
             ex.printStackTrace();
@@ -230,7 +230,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             }
         }
         // populate the nodeList
-        IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
+        IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
         JobKey jobKey = new JobKey("job-" + localCnIdentifier, logGroupName);
         // Add the local CN to the jobs to be executed.
         try {
@@ -392,7 +392,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             Integer partitionId = migrationEvent.getPartitionId();
             PartitionService partitionService = hazelcast.getPartitionService();
 
-            IMap<NodeReference, Node> hzNodes = hazelcast.getMap("hzNodes");
+            IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
 
             List<Integer> nodePartitions = new ArrayList<Integer>();
             for (NodeReference key : hzNodes.keySet()) {
