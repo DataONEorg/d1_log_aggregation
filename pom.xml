@@ -13,7 +13,7 @@
         <spring.version>3.1.1.RELEASE</spring.version>
         <quartz.version>2.1.6</quartz.version>
         <solr.version>3.4.0</solr.version>
-        <hazelcast.version>2.4.1-SNAPSHOT</hazelcast.version>
+        <hazelcast.version>2.4.1</hazelcast.version>
         <bouncycastle.version>1.46</bouncycastle.version>
         <d1_libclient_version>1.2.0-SNAPSHOT</d1_libclient_version>
         <d1_cn_noderegistry_version>1.2.0-SNAPSHOT</d1_cn_noderegistry_version>
