@@ -5,7 +5,7 @@
     <artifactId>d1_log_aggregation</artifactId>
     <packaging>jar</packaging>
     <name>DataONE_Log_Aggregation</name>
-    <version>1.2.0-SNAPSHOT</version>
+    <version>1.2.0</version>
     <description>Cn DataONE Logging Aggregation</description>
     <url>http://dataone.org</url>
     <properties>
@@ -15,8 +15,8 @@
         <solr.version>3.4.0</solr.version>
         <hazelcast.version>2.4.1</hazelcast.version>
         <bouncycastle.version>1.46</bouncycastle.version>
-        <d1_libclient_version>1.2.0-SNAPSHOT</d1_libclient_version>
-        <d1_cn_noderegistry_version>1.2.0-SNAPSHOT</d1_cn_noderegistry_version>
+        <d1_libclient_version>1.2.5</d1_libclient_version>
+        <d1_cn_noderegistry_version>1.2.0</d1_cn_noderegistry_version>
     </properties>
     <build>
         <plugins>
