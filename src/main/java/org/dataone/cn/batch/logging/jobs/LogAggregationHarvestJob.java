@@ -39,7 +39,10 @@ import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
+import org.dataone.cn.batch.logging.NodeRegistryPool;
 import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
+import org.dataone.cn.ldap.NodeAccess;
+import org.dataone.service.cn.impl.v1.NodeRegistryService;
 import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
@@ -74,6 +77,7 @@ public class LogAggregationHarvestJob implements Job {
         JobExecutionException jex = null;
         String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
         String lockName = nodeIdentifier;
+        logger.info("Job-" + nodeIdentifier +  " executing job");
         try {
             boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
             if (activateJob) {
@@ -92,76 +96,75 @@ public class LogAggregationHarvestJob implements Job {
                 }
 
 
-                logger.info("executing for " + nodeIdentifier);
+                
                 nodeLocked = hzLogAggregatorLockMap.tryLock(lockName, 500L, TimeUnit.MILLISECONDS);
                 Future future = null;
                 if (nodeLocked) {
+                    // look at the node, if the boolean property of the node
+                    // aggregateLogs is true, then set to false
+                    NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(nodeReference.getValue());
+                    NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
+                    if ( nodeAccess.getAggregateLogs(nodeReference)) {
+                        nodeAccess.setAggregateLogs(nodeReference, false);
 
-                    LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference);
-                    // If the node reference is the local machine nodId, then
-                    // do not submit to hazelcast for distribution
-                    // Rather, execute it on the local machine
-                    if (nodeReference.getValue().equals(localCnIdentifier)) {
-                        // Execute on localhost
-                        AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
-                        future = executor.submit(harvestTask);
-                    } else {
-                        // Distribute the task to any hazelcast process cluster instance
-                        DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
-                        ExecutorService executor = hazelcast.getExecutorService();
-                        future = executor.submit(dtask);
-                    }
-                    Date lastProcessingCompletedDate = null;
-                    try {
-                        lastProcessingCompletedDate = (Date) future.get();
-                    } catch (InterruptedException ex) {
-                        logger.error(ex.getMessage());
-                    } catch (ExecutionException ex) {
-                        if (ex.getCause() instanceof ExecutionDisabledException) {
-                            logger.error("ExecutionDisabledException- " + nodeIdentifier + "-" + ex.getMessage() + "\n\tExecutionDisabledException: Will fire Job again\n");
-                            jex = new JobExecutionException();
-                            jex.setStackTrace(ex.getStackTrace());
-                            jex.setRefireImmediately(true);
-                            Thread.sleep(5000L);
+                        
+                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference);
+                        // If the node reference is the local machine nodId, then
+                        // do not submit to hazelcast for distribution
+                        // Rather, execute it on the local machine
+                        if (nodeReference.getValue().equals(localCnIdentifier)) {
+                            // Execute on localhost
+                            AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
+                            future = executor.submit(harvestTask);
                         } else {
-                            logger.error("ExecutionException- " + nodeIdentifier + "-" + ex.getMessage());
+                            // Distribute the task to any hazelcast process cluster instance
+                            DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
+                            ExecutorService executor = hazelcast.getExecutorService();
+                            future = executor.submit(dtask);
                         }
-                    }
-                    // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
-                    // Does not need to be stored, maybe just printed?
-                    if (lastProcessingCompletedDate == null) {
-                        logger.info("LogAggregatorTask " + nodeIdentifier + "-returned with no completion date!");
+                        Date lastProcessingCompletedDate = null;
+                        try {
+                            lastProcessingCompletedDate = (Date) future.get();
+                        } catch (InterruptedException ex) {
+                            logger.error(ex.getMessage());
+                        } catch (ExecutionException ex) {
+                            if (ex.getCause() instanceof ExecutionDisabledException) {
+                                logger.error("Job-" + nodeIdentifier +  " ExecutionDisabledException- " + nodeIdentifier + "-" + ex.getMessage() + "\n\tExecutionDisabledException: Will fire Job again\n");
+                                jex = new JobExecutionException();
+                                jex.setStackTrace(ex.getStackTrace());
+                                jex.setRefireImmediately(true);
+                                Thread.sleep(5000L);
+                            } else {
+                                logger.error("Job-" + nodeIdentifier +  " ExecutionException- " + nodeIdentifier + "-" + ex.getMessage());
+                            }
+                        }
+                        // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
+                        // Does not need to be stored, maybe just printed?
+                        if (lastProcessingCompletedDate == null) {
+                            logger.info("Job-" + nodeIdentifier +  " Task returned with no completion date!");
+                        } else {
+                            logger.info("Job-" + nodeIdentifier +  " Task returned with a date of " + format.format(lastProcessingCompletedDate));
+                        }
+                        nodeAccess.setAggregateLogs(nodeReference, true);
+                        // think about putting the jobContext.getFireInstanceId() on a queue
+                        // or something so that all the entries for that job get submitted
+                        // to lucune solr in batch
                     } else {
-                        logger.info("LogAggregatorTask " + nodeIdentifier + "-returned with a date of " + format.format(lastProcessingCompletedDate));
+                        logger.error("Job-" + nodeIdentifier +  " Unable to reset LDAP aggregateLogs boolean");
                     }
-                    // think about putting the jobContext.getFireInstanceId() on a queue
-                    // or something so that all the entries for that job get submitted
-                    // to lucune solr in batch
+                    hzLogAggregatorLockMap.unlock(lockName);
                 } else {
-                    // log this message, someone else has the lock (and they probably shouldn't)
-                    try {
-                        // sleep for 30 seconds?
-                        Thread.sleep(30000L);
-                        logger.warn(jobContext.getJobDetail().getDescription() + " locked");
+                    // log this message, someone else has the lock
 
-                        jex = new JobExecutionException();
-                        jex.setRefireImmediately(true);
-                    } catch (InterruptedException ex) {
-                        logger.debug( "Sleep Interrupted for " + nodeIdentifier + ex.getMessage());
-                    }
+                    logger.error("Job-" + nodeIdentifier +  "hazelcast locked");
 
                 }
             }
         } catch (Exception ex) {
-            logger.error(jobContext.getJobDetail().getDescription() + " -"+ nodeIdentifier + "- died: " + ex.getMessage());
+            logger.error("Job-" + nodeIdentifier +  " - died: " + ex.getMessage());
             jex = new JobExecutionException();
-            jex.unscheduleFiringTrigger();
             jex.setStackTrace(ex.getStackTrace());
-        } finally {
-            if (nodeLocked && (hzLogAggregatorLockMap != null)) {
-                hzLogAggregatorLockMap.unlock(lockName);
-            }
-        }
+        } 
         if (jex != null) {
             throw jex;
         }

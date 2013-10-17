@@ -225,6 +225,9 @@ public class LogAggregationRecoverJob implements Job {
                 Date lastLogAggregatedDate = nodeAccess.getLogLastAggregated(localNodeReference);
                 Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
                 Boolean assignDate = false;
+                // only assign the lastLogAggregated Date if logAggregation
+                // has never run successfully before and this
+                // recovery job is running.
                 if (lastLogAggregatedDate == null) {
                     lastLogAggregatedDate = initializedDate;
                     assignDate = true;
@@ -238,7 +241,7 @@ public class LogAggregationRecoverJob implements Job {
                     // find out what the last log record is to get the date from it for recovery purposes
                     SolrQuery queryParams = new SolrQuery();
                     queryParams.setQuery(recoveryQuery);
-                    queryParams.setSortField("dateAggregated", SolrQuery.ORDER.desc);
+                    queryParams.setSortField("dateAggregated", SolrQuery.ORDER.asc);
                     queryParams.setStart(start);
                     queryParams.setRows(batchSize);
 
