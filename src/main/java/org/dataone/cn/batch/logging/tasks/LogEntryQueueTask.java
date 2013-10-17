@@ -97,7 +97,7 @@ public class LogEntryQueueTask implements Callable {
                     }
                     Thread.sleep(10000L); // ten seconds
                 }
-                logger.info("Polled");
+                logger.debug("Polled");
                 // first check all the futures of past tasks to see if any have finished
                 // if something timesout after X # of tries, then cancell and try again
                 if (!futuresMap.isEmpty()) {
@@ -144,7 +144,7 @@ public class LogEntryQueueTask implements Callable {
                     }
                 } else {
                     for (LogEntrySolrItem indexLogTask : indexLogTasks) {
-                        logger.info("found indexLogTask " + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
+                        logger.info("LogEntryQueueTask-" + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
                     }
                     logEntryBuffer.addAll(indexLogTasks);
                     if (logEntryBuffer.size() >= maxIndexBufferSize) {

@@ -62,7 +62,7 @@ public class LogEntryIndexTask implements Callable<String> {
     @Override
     public String call() {
 
-        logger.info("Starting LogEntryIndexTask");
+        logger.info("LogEntryIndexTask adding " + indexLogEntryBuffer.size() + " records to index");
         try {
             solrServer.addBeans(indexLogEntryBuffer);
             solrServer.commit();

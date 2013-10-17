@@ -115,7 +115,9 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      */
     @Override
     public Date call() throws ExecutionException {
+        
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
+        logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Starting");
         LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
         try {
             Boolean tryAgain = false;
@@ -155,7 +157,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(d1NodeReference.getValue());
             NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
             // logger is not  be serializable, but no need to make it transient imo
-            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue());
+
             HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
             ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
             // Need the LinkedHashMap to preserver insertion order
@@ -193,7 +195,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     queryFailures = 0;
                 } catch (QueryLimitException e) {
                     tryAgain = true;
-                } catch (Exception e) {
+                } catch (ServiceFailure e) {
                     if (queryFailures < 5) {
                         try {
                             Thread.sleep(60000L);
@@ -204,8 +206,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         ++queryFailures;
                         totalFailure += queryFailures;
                         logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Failures this run = " + totalFailure);
+                    } else {
+                        throw e;
                     }
-                    e.printStackTrace();
+                    
                 }
                 if (readQueue != null && !readQueue.isEmpty()) {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
@@ -219,10 +223,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             mostRecentLoggedDate = logEntry.getDateLogged();
                         }
                         Date now = new Date();
+                        
                         LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
                         boolean isPublicSubject = false;
                         solrItem.setIsPublic(isPublicSubject);
                         solrItem.setDateAggregated(now);
+                        // overwrite whatever the logEntry tells us here
+                        // see redmine task #4099: NodeIds of Log entries may be incorrect
+                        solrItem.setNodeIdentifier(d1NodeReference.getValue());
                         SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
                         if (systemMetadata != null) {
                             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
@@ -249,8 +257,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
                         try {
                             // Simple way to throttle publishing of messages
-                            // thread should sleep for 250MS
-                            Thread.sleep(250L);
+                            // thread should sleep for 500MS
+                            Thread.sleep(500L);
                         } catch (InterruptedException ex) {
                             logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
                         }
@@ -264,9 +272,28 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     }
                 }
             } while (tryAgain || (!logQueryStack.isEmpty()));
- 
+            logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Complete");
             return mostRecentLoggedDate;
+        } catch (InvalidToken ex) {
+            ex.printStackTrace();
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+            throw new ExecutionException(ex);
+        } catch (NotImplemented ex) {
+            ex.printStackTrace();
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+            throw new ExecutionException(ex);
+        } catch (InvalidRequest ex) {
+            ex.printStackTrace();
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+            throw new ExecutionException(ex);
         } catch (ServiceFailure ex) {
+            ex.printStackTrace();
+            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+            throw new ExecutionException(ex);
+        } catch (EmptyStackException ex) {
+            logger.warn("For some reason the date logQueryStack threw an empty exception but isEmpty reported false?");
+            throw new ExecutionException(ex);
+        } catch (NotAuthorized ex) {
             ex.printStackTrace();
             logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
             throw new ExecutionException(ex);
@@ -288,60 +315,112 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      * 
      * @return List<LogEntry>
      */
-    private List<LogEntry> retrieve(MNode mNode) throws NotAuthorized, InvalidRequest, NotImplemented, ServiceFailure, InvalidToken, QueryLimitException {
+    private List<LogEntry> retrieve(MNode mNode) throws NotAuthorized, InvalidRequest, NotImplemented, ServiceFailure, InvalidToken, QueryLimitException, EmptyStackException {
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         List<LogEntry> writeQueue = new ArrayList<LogEntry>();
         try {
             LogQueryDateRange logQueryDateRange = logQueryStack.pop();
 
-
+            
             int start = 0;
             int total = 0;
             Log logList = null;
 
             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval from " + start);
             do {
+               boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+                if (!activateJob) {
+                    logQueryStack.empty();
+                    logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
+                    throw new EmptyStackException();
+                }
                 // always execute for the first run (for start = 0)
                 // otherwise skip because when the start is equal or greater
                 // then total, then all objects have been harvested
-
-                logList = mNode.getLogRecords(session, logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, start, batchSize);
-                // if objectList is null or the count is 0 or the list is empty, then
-                // there is nothing to process
-                if (logList != null) {
-                    // if the total records returned from the above query is greater than the
-                    // limit we have placed on batch processing, then find the median date
-                    // and try again.
-                    // or if the date range of the query is less that one second, return the results as found
-                    // even if they extend beyon the batch processing limit
-                    if ((logList.getTotal() > queryTotalLimit)
-                            && (logQueryDateRange.getToDate().getTime() - logQueryDateRange.getFromDate().getTime()) > 1000L) {
-                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " discard pop start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
-                        long medianTime = (logQueryDateRange.getFromDate().getTime() + logQueryDateRange.getToDate().getTime()) / 2;
-
-                        LogQueryDateRange lateRecordDate = new LogQueryDateRange(new Date(medianTime), logQueryDateRange.getToDate());
-                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " late push start " + format.format(lateRecordDate.getFromDate()) + " end " + format.format(lateRecordDate.getToDate()));
-                        logQueryStack.push(lateRecordDate);
-
-                        LogQueryDateRange earlyRecordDate = new LogQueryDateRange(logQueryDateRange.getFromDate(), new Date(medianTime));
-                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "early push start " + format.format(earlyRecordDate.getFromDate()) + " end " + format.format(earlyRecordDate.getToDate()));
-                        logQueryStack.push(earlyRecordDate);
-                        throw new QueryLimitException();
+                // based on information from metacat devs, first querying with
+                // rows 0 will return quickly due to the
+                // shortcut of not needing to perform paging
+                if (start == 0) {
+                    try {
+                        logList = mNode.getLogRecords(logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
+                    } catch (NotAuthorized e) {
+                        logQueryStack.push(logQueryDateRange);
+                        throw e;
+                    } catch (InvalidRequest e) {
+                        logQueryStack.push(logQueryDateRange);
+                        throw e;
+                    } catch (NotImplemented e) {
+                        logQueryStack.push(logQueryDateRange);
+                        throw e;
+                    } catch (ServiceFailure e) {
+                        logQueryStack.push(logQueryDateRange);
+                        throw e;
+                    } catch (InvalidToken e) {
+                        logQueryStack.push(logQueryDateRange);
+                        throw e;
                     }
-                    if ((logList.getCount() > 0)
-                            && (logList.getLogEntryList() != null)
-                            && (!logList.getLogEntryList().isEmpty())) {
-                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " harvested start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
-                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " log harvested start#=" + logList.getStart() + " count=" + logList.getCount() + " total=" + logList.getTotal());
-                        start += logList.getCount();
-                        writeQueue.addAll(logList.getLogEntryList());
-                        total = logList.getTotal();
+                    // if objectList is null or the count is 0 or the list is empty, then
+                    // there is nothing to process
+                    if (logList != null) {
+                        // if the total records returned from the above query is greater than the
+                        // limit we have placed on batch processing, then find the median date
+                        // and try again.
+                        // or if the date range of the query is less that one second, return the results as found
+                        // even if they extend beyon the batch processing limit
+                        if ((logList.getTotal() > queryTotalLimit)
+                                && (logQueryDateRange.getToDate().getTime() - logQueryDateRange.getFromDate().getTime()) > 1000L) {
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " discard pop start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
+                            long medianTime = (logQueryDateRange.getFromDate().getTime() + logQueryDateRange.getToDate().getTime()) / 2;
+
+                            LogQueryDateRange lateRecordDate = new LogQueryDateRange(new Date(medianTime), logQueryDateRange.getToDate());
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() +" late push start " + format.format(lateRecordDate.getFromDate()) + " end " + format.format(lateRecordDate.getToDate()));
+                            logQueryStack.push(lateRecordDate);
+
+                            LogQueryDateRange earlyRecordDate = new LogQueryDateRange(logQueryDateRange.getFromDate(), new Date(medianTime));
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "early push start " + format.format(earlyRecordDate.getFromDate()) + " end " + format.format(earlyRecordDate.getToDate()));
+                            logQueryStack.push(earlyRecordDate);
+                            throw new QueryLimitException();
+                        }
                     }
                 }
+                
+                try {
+                    logList = mNode.getLogRecords(session, logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, start, batchSize);
+                } catch (NotAuthorized e) {
+                    logQueryStack.push(logQueryDateRange);
+                    throw e;
+                } catch (InvalidRequest e) {
+                    logQueryStack.push(logQueryDateRange);
+                    throw e;
+                } catch (NotImplemented e) {
+                    logQueryStack.push(logQueryDateRange);
+                    throw e;
+                } catch (ServiceFailure e) {
+                    logQueryStack.push(logQueryDateRange);
+                    throw e;
+                } catch (InvalidToken e) {
+                    logQueryStack.push(logQueryDateRange);
+                    throw e;
+                }
+                // if objectList is null or the count is 0 or the list is empty, then
+                // there is nothing to process
+
+
+                if ((logList != null)
+                        && (logList.getCount() > 0)
+                        && (logList.getLogEntryList() != null)
+                        && (!logList.getLogEntryList().isEmpty())) {
+                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " harvested start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
+                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " log harvested start#=" + logList.getStart() + " count=" + logList.getCount() + " total=" + logList.getTotal());
+                    start += logList.getCount();
+                    writeQueue.addAll(logList.getLogEntryList());
+                    total = logList.getTotal();
+                }
+                
             } while ((logList != null) && (logList.getCount() > 0) && (start < total));
         } catch (EmptyStackException ex) {
-            ex.printStackTrace();
+            throw ex;
         }
         return writeQueue;
     }
