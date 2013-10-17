@@ -149,13 +149,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
             String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
-                simpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
-                simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
-                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionFireNow();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).withMisfireHandlingInstructionIgnoreMisfires();
             } else {
-                simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionFireNow();
+                simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             }
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);

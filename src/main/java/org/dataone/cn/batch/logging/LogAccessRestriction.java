@@ -47,6 +47,7 @@ public class LogAccessRestriction {
                 subjectsAllowedRead.add(standardizedName);
             } catch (IllegalArgumentException ex) {
                 logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
+                subjectsAllowedRead.add(rightsHolder.getValue());
             }
         }
         if (systemMetadata.getAccessPolicy() != null) {
