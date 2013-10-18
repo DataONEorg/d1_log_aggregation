@@ -272,7 +272,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      */
     private void addHarvest(NodeReference key, Node node, Date startDate) {
         if (node.getState().equals(NodeState.UP)
-                && node.isSynchronize() && node.getType().equals(NodeType.MN)) {
+                 && node.getType().equals(NodeType.MN)) {
 
             // the current mn node is owned by this hazelcast cn node member
             // so schedule a job based on the settings of the node
