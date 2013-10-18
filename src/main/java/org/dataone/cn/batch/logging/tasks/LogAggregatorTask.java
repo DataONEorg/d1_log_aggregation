@@ -205,7 +205,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         tryAgain = true;
                         ++queryFailures;
                         totalFailure += queryFailures;
-                        logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Failures this run = " + totalFailure);
+                        logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + e.serialize(e.FMT_XML));
+                        logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " Failures this run = " + totalFailure);
                     } else {
                         throw e;
                     }
