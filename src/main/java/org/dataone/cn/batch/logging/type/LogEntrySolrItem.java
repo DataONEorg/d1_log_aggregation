@@ -25,6 +25,7 @@ package org.dataone.cn.batch.logging.type;
 import java.io.Serializable;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.service.types.v1.LogEntry;
+import java.math.BigInteger;
 import java.util.Date;
 import java.util.List;
 /**
@@ -70,6 +71,24 @@ public class LogEntrySolrItem implements Serializable {
 
     @Field("nodeId")
     String nodeIdentifier;
+    
+    @Field("formatId")
+    String formatId;
+    
+    @Field("size")
+    BigInteger size;
+    
+    @Field("rightsholder")
+    String rightsHolder;
+    
+    @Field("country")
+    String country;
+    
+    @Field("region")
+    String region;
+    
+    @Field("city")
+    String city;
 
     public LogEntrySolrItem() {
 
@@ -86,7 +105,22 @@ public class LogEntrySolrItem implements Serializable {
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
         
     }
+    
+    public String getCity() {
+        return city;
+    }
 
+    public void setCity(String city) {
+        this.city = city;
+    }
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
+    }
+    
     public void setId(String id) {
         this.id = id;
     }
@@ -127,6 +161,14 @@ public class LogEntrySolrItem implements Serializable {
         this.event = event;
     }
 
+    public String getFormatId() {
+        return formatId;
+    }
+
+    public void setFormatId(String formatId) {
+        this.formatId = formatId;
+    }   
+    
     public String getIpAddress() {
         return ipAddress;
     }
@@ -150,7 +192,31 @@ public class LogEntrySolrItem implements Serializable {
     public void setPid(String pid) {
         this.pid = pid;
     }
+    
+    public String getRegion() {
+        return region;
+    }
 
+    public void setRegion(String region) {
+        this.region = region;
+    }
+    
+    public String getRightsHolder() {
+        return rightsHolder;
+    }
+
+    public void setRightsHolder(String rightsHolder) {
+        this.rightsHolder = rightsHolder;
+    }
+    
+    public BigInteger getSize() {
+        return size;
+    }
+
+    public void setSize(BigInteger size) {
+        this.size = size;
+    }
+    
     public String getSubject() {
         return subject;
     }
@@ -182,7 +248,4 @@ public class LogEntrySolrItem implements Serializable {
     public void setReadPermission(List<String> readPermission) {
         this.readPermission = readPermission;
     }
-
-
-
 }

@@ -32,6 +32,7 @@ import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.IMap;
+import java.io.FileNotFoundException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,7 @@ import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.util.ClientUtils;
+import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.hazelcast.HazelcastClientFactory;
@@ -178,13 +180,36 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     private void processLogEntries(List<LogEntrySolrItem> logEntrySolrItemList, SystemMetadata systemMetadata) {
         boolean isPublicSubject = false;
+        String dbFilename = Settings.getConfiguration().getString(
+				"LogAggregator.geoIPdbName");
+		GeoIPService geoIPsvc = null;
+
+		try {
+			geoIPsvc = GeoIPService.getInstance(dbFilename);
+		} catch (FileNotFoundException fnf) {
+			geoIPsvc = null;
+		} catch (Exception e) {
+			logger.error("Error opening GeoIP service" + e.getMessage());
+			geoIPsvc = null;
+		}
 
         List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
         for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
             solrItem.setIsPublic(isPublicSubject);
             solrItem.setReadPermission(subjectsAllowedRead);
-
+            solrItem.setFormatId(systemMetadata.getFormatId().toString());
+            solrItem.setSize(systemMetadata.getSize());
+            solrItem.setRightsHolder(systemMetadata.getRightsHolder().toString());
+            
+            // Set the geographic location attributes determined from the IP address
+            if (geoIPsvc != null) {
+            	geoIPsvc.initLocation(solrItem.getIpAddress());
+				solrItem.setCountry(geoIPsvc.getCountry());
+				solrItem.setRegion(geoIPsvc.getRegion());
+				solrItem.setCity(geoIPsvc.getCity());
+            }
         }
+        
         // publish 100 at a time, do not overwhelm the
         // network with massive packets, or too many small packets
         int startIndex = 0;
