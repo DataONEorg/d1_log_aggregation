@@ -28,15 +28,19 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+
 import javax.security.auth.x500.X500Principal;
+
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.client.auth.CertificateManager;
+import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
@@ -45,7 +49,6 @@ import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
-
 import org.dataone.configuration.Settings;
 import org.dataone.service.cn.impl.v1.NodeRegistryService;
 import org.dataone.service.exceptions.InvalidRequest;
@@ -90,6 +93,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
     private Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size", 1000);
     private Integer queryTotalLimit = Settings.getConfiguration().getInt("LogAggregator.query_total_limit", 10000);
+    private static final String geoIPdbName = Settings.getConfiguration().getString("LogAggregator.geoIPdbName");
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private static AtomicNumber hzAtomicNumber;
     private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
@@ -184,6 +188,19 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
             }
             MNode mNode = new MNode(d1NodeBaseUrl);
+
+            // Create a service to determine location name from IP address that was obtained from a log entry
+            String dbFilename = Settings.getConfiguration().getString(
+					"LogAggregator.geoIPdbName");
+            // Initialize the GeoIPservice that derives location attributes from IP address. If the service
+            // can't be initialized, then continue processing and the related fields will be set to blank
+			GeoIPService geoIPsvc;
+
+			try {
+				geoIPsvc = GeoIPService.getInstance(dbFilename);
+			} catch (Exception e) {
+				throw new ServiceFailure(e.getMessage(), "Unable to initialize the GeoIP service");
+			}
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 List<LogEntry> readQueue = new ArrayList<LogEntry>();
@@ -215,7 +232,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 if (readQueue != null && !readQueue.isEmpty()) {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
                     List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(queryTotalLimit);
-
+            		
                     // process the LogEntries into Solr Items that can be persisted
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
@@ -236,6 +253,18 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         if (systemMetadata != null) {
                             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
                             solrItem.setReadPermission(subjectsAllowedRead);
+                            solrItem.setFormatId(systemMetadata.getFormatId().toString());
+                            solrItem.setSize(systemMetadata.getSize());
+                            solrItem.setRightsHolder(systemMetadata.getRightsHolder().toString());
+                            
+							if (geoIPsvc != null) {
+								// Set the geographic location attributes determined from the IP address
+								geoIPsvc.initLocation(solrItem.getIpAddress());
+								// Add the location attributes to the current Solr document
+								solrItem.setCountry(geoIPsvc.getCountry());
+								solrItem.setRegion(geoIPsvc.getRegion());
+								solrItem.setCity(geoIPsvc.getCity());
+							}
                         }
                         Long integral = new Long(now.getTime());
                         Long decimal = new Long(hzAtomicNumber.incrementAndGet());
@@ -243,6 +272,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         solrItem.setId(id);
                         logEntrySolrItemList.add(solrItem);
                     }
+
                     // publish 100 at a time, do not overwhelm the
                     // network with massive packets, or too many small packets
                     int startIndex = 0;
