@@ -95,7 +95,12 @@ public class GeoIPtest extends TestCase {
 		geoIPsvc.initLocation("128.111.84.40");
 		String cityName = geoIPsvc.getCity();
 		assert (cityName.equals("Santa Barbara"));
-		System.out.println("city name: " + cityName);
+		double latitude = geoIPsvc.getLatitude();
+		double longitude = geoIPsvc.getLongitude();
+		float delta = 0.0002f;
+		assertEquals(latitude, 34.4329f, delta);
+		assertEquals(longitude, -119.8370f, delta);
+
 		geoIPsvc.close();
 	}
 }
