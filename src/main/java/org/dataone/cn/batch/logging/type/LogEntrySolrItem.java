@@ -89,6 +89,36 @@ public class LogEntrySolrItem implements Serializable {
     
     @Field("city")
     String city;
+    
+    @Field("geohash_1")
+    String geohash_1;
+    
+    @Field("geohash_2")
+    String geohash_2;
+    
+    @Field("geohash_3")
+    String geohash_3;
+    
+    @Field("geohash_4")
+    String geohash_4;
+    
+    @Field("geohash_5")
+    String geohash_5;
+    
+    @Field("geohash_6")
+    String geohash_6;
+    
+    @Field("geohash_7")
+    String geohash_7;
+    
+    @Field("geohash_8")
+    String geohash_8;
+    
+    @Field("geohash_9")
+    String geohash_9;
+    
+    @Field("location")
+    String location;
 
     public LogEntrySolrItem() {
 
@@ -128,6 +158,85 @@ public class LogEntrySolrItem implements Serializable {
     public String getId() {
         return id;
     }
+
+	public String getGeohash_1() {
+		return geohash_1;
+	}
+
+	public void setGeohash_1(String geohash) {
+		this.geohash_1 = geohash;
+	}
+
+	public String getGeohash_2() {
+		return geohash_2;
+	}
+
+	public void setGeohash_2(String geohash) {
+		this.geohash_2 = geohash;
+	}
+
+	public String getGeohash_3() {
+		return geohash_3;
+	}
+
+	public void setGeohash_3(String geohash) {
+		this.geohash_3 = geohash;
+	}
+
+	public String getGeohash_4() {
+		return geohash_4;
+	}
+
+	public void setGeohash_4(String geohash) {
+		this.geohash_4 = geohash;
+	}
+
+	public String getGeohash_5() {
+		return geohash_5;
+	}
+
+	public void setGeohash_5(String geohash) {
+		this.geohash_5 = geohash;
+	}
+
+	public String getGeohash_6() {
+		return geohash_6;
+	}
+
+	public void setGeohash_6(String geohash) {
+		this.geohash_6 = geohash;
+	}
+
+	public String getGeohash_7() {
+		return geohash_7;
+	}
+
+	public void setGeohash_7(String geohash) {
+		this.geohash_7 = geohash;
+	}
+
+	public String getGeohash_8() {
+		return geohash_8;
+	}
+
+	public void setGeohash_8(String geohash) {
+		this.geohash_8 = geohash;
+	}
+
+	public String getGeohash_9() {
+		return geohash_9;
+	}
+
+	public void setGeohash_9(String geohash) {
+		this.geohash_9 = geohash;
+	}
+	
+	public String getLocation() {
+		return location;
+	}
+	public void setLocation(String location) {
+		this.location = location;
+	}
 
     public void setDateAggregated(Date dateAggregated) {
         this.dateAggregated = dateAggregated;

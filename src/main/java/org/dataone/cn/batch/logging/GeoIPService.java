@@ -21,11 +21,8 @@ package org.dataone.cn.batch.logging;
 import java.io.IOException;
 import java.io.FileNotFoundException;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.apache.log4j.Logger;
-import org.dataone.configuration.Settings;
 import com.maxmind.geoip.LookupService;
 import com.maxmind.geoip.regionName;
 import com.maxmind.geoip.Location;
@@ -48,6 +45,8 @@ public class GeoIPService {
 	private String country = null;
 	private String region = null;
 	private String city = null;
+	private double latitude = 0.0;
+	private double longitude = 0.0;
 
 	public String getCountry() {
 		return country;
@@ -61,6 +60,14 @@ public class GeoIPService {
 		return city;
 	}
 	
+	public double getLatitude() {
+		return latitude;
+	}
+	
+	public double getLongitude() {
+		return longitude;
+	}
+	
 	/**
 	 * Set the location attributes for this object
 	 * 
@@ -70,7 +77,7 @@ public class GeoIPService {
 	
 	public void initLocation(String IPaddr) {
 
-		Location eventLocation = null;
+		Location location = null;
 		country = null;
 		region = null;
 		city = null;
@@ -81,15 +88,19 @@ public class GeoIPService {
 
 		if (geoIPsvc != null) {
 			if (IPaddr != null && geoIPsvc != null) {
-				eventLocation = geoIPsvc.getLocation(IPaddr);
+				location = geoIPsvc.getLocation(IPaddr);
 
-				if (eventLocation != null) {
-					country = eventLocation.countryName;
+				if (location != null) {
+					country = location.countryName;
 					region = regionName.regionNameByCode(
-							eventLocation.countryCode, eventLocation.region);
-					city = eventLocation.city;
+							location.countryCode, location.region);
+					city = location.city;
+					latitude = location.latitude;
+					longitude = location.longitude;
+				} else {
+					System.out.println("location not found");
 				}
-				//System.out.println("country: " + country + ", region: " + region + ", city: " + city);
+				System.out.println("country: " + country + ", region: " + region + ", city: " + city);
 			}
 		}
 	}

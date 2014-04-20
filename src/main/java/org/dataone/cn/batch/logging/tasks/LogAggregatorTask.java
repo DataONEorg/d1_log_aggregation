@@ -22,6 +22,8 @@
 
 package org.dataone.cn.batch.logging.tasks;
 
+import ch.hsr.geohash.GeoHash;
+
 import com.hazelcast.core.AtomicNumber;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
@@ -201,6 +203,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 			} catch (Exception e) {
 				throw new ServiceFailure(e.getMessage(), "Unable to initialize the GeoIP service");
 			}
+			
+			String geohash = null;
+			// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
+			// at different resolutions, or for searching/filtering
+			double geohashLat = 0;
+			double geohashLong = 0;
+	        // Length of geohash to retrieve from service
+	        int geohashLength = 9;
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 List<LogEntry> readQueue = new ArrayList<LogEntry>();
@@ -264,6 +274,28 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 								solrItem.setCountry(geoIPsvc.getCountry());
 								solrItem.setRegion(geoIPsvc.getRegion());
 								solrItem.setCity(geoIPsvc.getCity());
+								// Calculate the geohash values based on the lat, long returned from
+								// the GeoIP service.
+								geohashLat = geoIPsvc.getLatitude();
+								geohashLong = geoIPsvc.getLongitude();
+					    		String location = String.format("%.4f", geohashLat ) + ", " + String.format("%.4f", geohashLong);
+					    		solrItem.setLocation(location);
+					    		System.out.println("location: " + location);
+					    		solrItem.setLocation(location);
+					    		try {
+					    			geohash = GeoHash.withCharacterPrecision(geohashLat, geohashLong, geohashLength).toBase32();
+						    		solrItem.setGeohash_1(geohash.substring(0, 1));
+						    		solrItem.setGeohash_2(geohash.substring(0, 2));
+						    		solrItem.setGeohash_3(geohash.substring(0, 3));
+						    		solrItem.setGeohash_4(geohash.substring(0, 4));
+						    		solrItem.setGeohash_5(geohash.substring(0, 5));
+						    		solrItem.setGeohash_6(geohash.substring(0, 6));
+						    		solrItem.setGeohash_7(geohash.substring(0, 7));
+						    		solrItem.setGeohash_8(geohash.substring(0, 8));
+						    		solrItem.setGeohash_9(geohash.substring(0, 9));
+					    		} catch (IllegalArgumentException iae) {
+					    			logger.error("Error calculating geohash for log record id " + solrItem.getId() + ": " + iae.getMessage());
+					    		}
 							}
                         }
                         Long integral = new Long(now.getTime());
