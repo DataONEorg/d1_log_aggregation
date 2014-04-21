@@ -194,7 +194,6 @@
             <version>${d1_cn_noderegistry_version}</version>
             <type>jar</type>
         </dependency>
-
         <dependency>
             <groupId>org.jsslutils</groupId>
             <artifactId>jsslutils</artifactId>
@@ -221,6 +220,11 @@
 					<groupId>com.maxmind.geoip</groupId>
 					<artifactId>geoip-api</artifactId>
 					<version>1.2.12</version>
+				</dependency>
+				<dependency>
+					<groupId>ch.hsr</groupId>
+					<artifactId>geohash</artifactId>
+					<version>1.0.10</version>
 				</dependency>
     </dependencies>
     <licenses>
