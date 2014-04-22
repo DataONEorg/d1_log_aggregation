@@ -25,7 +25,6 @@ package org.dataone.cn.batch.logging.type;
 import java.io.Serializable;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.service.types.v1.LogEntry;
-import java.math.BigInteger;
 import java.util.Date;
 import java.util.List;
 /**
@@ -76,7 +75,7 @@ public class LogEntrySolrItem implements Serializable {
     String formatId;
     
     @Field("size")
-    BigInteger size;
+    long size;
     
     @Field("rightsholder")
     String rightsHolder;
@@ -318,11 +317,11 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
     
-    public BigInteger getSize() {
+    public long getSize() {
         return size;
     }
 
-    public void setSize(BigInteger size) {
+    public void setSize(long size) {
         this.size = size;
     }
     
