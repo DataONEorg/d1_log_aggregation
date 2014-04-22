@@ -209,7 +209,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             solrItem.setIsPublic(isPublicSubject);
             solrItem.setReadPermission(subjectsAllowedRead);
             solrItem.setFormatId(systemMetadata.getFormatId().toString());
-            solrItem.setSize(systemMetadata.getSize());
+            solrItem.setSize(systemMetadata.getSize().longValue());
             solrItem.setRightsHolder(systemMetadata.getRightsHolder().toString());
             
             // Set the geographic location attributes determined from the IP address
