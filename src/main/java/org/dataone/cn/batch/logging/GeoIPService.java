@@ -126,6 +126,7 @@ public class GeoIPService {
 
 		try {
 			geoIPsvc = getLookupService();
+			logger.info("GeoIP service initialized from file " + geoIPdbName);
 		} catch (Exception e) {
 			logger.error("Error initializing GeoIPService: " + e.getMessage());
 		}
