@@ -77,7 +77,7 @@ public class LogEntrySolrItem implements Serializable {
     @Field("size")
     long size;
     
-    @Field("rightsholder")
+    @Field("rightsHolder")
     String rightsHolder;
     
     @Field("country")

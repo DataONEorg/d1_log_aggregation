@@ -265,7 +265,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             solrItem.setReadPermission(subjectsAllowedRead);
                             solrItem.setFormatId(systemMetadata.getFormatId().toString());
                             solrItem.setSize(systemMetadata.getSize().longValue());
-                            solrItem.setRightsHolder(systemMetadata.getRightsHolder().toString());
+                            logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
+                            solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
                             
 							if (geoIPsvc != null) {
 								// Set the geographic location attributes determined from the IP address
@@ -281,7 +282,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 					    		String location = String.format("%.4f", geohashLat ) + ", " + String.format("%.4f", geohashLong);
 					    		solrItem.setLocation(location);
 					    		System.out.println("location: " + location);
-					    		solrItem.setLocation(location);
 					    		try {
 					    			geohash = GeoHash.withCharacterPrecision(geohashLat, geohashLong, geohashLength).toBase32();
 						    		solrItem.setGeohash_1(geohash.substring(0, 1));
@@ -297,6 +297,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 					    			logger.error("Error calculating geohash for log record id " + solrItem.getId() + ": " + iae.getMessage());
 					    		}
 							}
+                        } else {
+                        	logger.error("System metadata is null for pid: " + solrItem.getPid());
                         }
                         Long integral = new Long(now.getTime());
                         Long decimal = new Long(hzAtomicNumber.incrementAndGet());

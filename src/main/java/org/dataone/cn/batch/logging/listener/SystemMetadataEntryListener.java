@@ -210,7 +210,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             solrItem.setReadPermission(subjectsAllowedRead);
             solrItem.setFormatId(systemMetadata.getFormatId().toString());
             solrItem.setSize(systemMetadata.getSize().longValue());
-            solrItem.setRightsHolder(systemMetadata.getRightsHolder().toString());
+            logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
+            solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
             
             // Set the geographic location attributes determined from the IP address
             // This will be stored in the Solr index as a geohash and as lat, long spatial type
@@ -225,7 +226,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 				// the GeoIP service.
 				geohashLat = geoIPsvc.getLatitude();
 				geohashLong = geoIPsvc.getLongitude();
-	    		String location = String.format("%.4f", geohashLat ) + ", " + String.format("%.4f", geohashLong);
+	    		String location = String.format("%.4f", geohashLat) + ", " + String.format("%.4f", geohashLong);
 	    		System.out.println("location: " + location);
 	    		solrItem.setLocation(location);
 	    		try {
