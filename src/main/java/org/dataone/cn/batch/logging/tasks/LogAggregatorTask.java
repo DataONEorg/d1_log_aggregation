@@ -263,7 +263,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         if (systemMetadata != null) {
                             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
                             solrItem.setReadPermission(subjectsAllowedRead);
-                            solrItem.setFormatId(systemMetadata.getFormatId().toString());
+                            solrItem.setFormatId(systemMetadata.getFormatId().getValue());
                             solrItem.setSize(systemMetadata.getSize().longValue());
                             logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
                             solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
