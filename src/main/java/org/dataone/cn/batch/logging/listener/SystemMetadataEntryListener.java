@@ -208,7 +208,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
             solrItem.setIsPublic(isPublicSubject);
             solrItem.setReadPermission(subjectsAllowedRead);
-            solrItem.setFormatId(systemMetadata.getFormatId().toString());
+            solrItem.setFormatId(systemMetadata.getFormatId().getValue());
             solrItem.setSize(systemMetadata.getSize().longValue());
             logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
             solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
