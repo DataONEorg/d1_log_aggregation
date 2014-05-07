@@ -23,8 +23,19 @@
 package org.dataone.cn.batch.logging.type;
 
 import java.io.Serializable;
+
+import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
+import org.dataone.client.ObjectFormatCache;
+import org.dataone.cn.batch.logging.GeoIPService;
+import org.dataone.service.exceptions.BaseException;
 import org.dataone.service.types.v1.LogEntry;
+import org.dataone.service.types.v1.ObjectFormat;
+import org.dataone.service.types.v1.ObjectFormatIdentifier;
+import org.dataone.service.types.v1.SystemMetadata;
+
+import ch.hsr.geohash.GeoHash;
+
 import java.util.Date;
 import java.util.List;
 /**
@@ -33,6 +44,8 @@ import java.util.List;
  * @author waltz
  */
 public class LogEntrySolrItem implements Serializable {
+	
+    private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
 
     @Field("id")
     String id;
@@ -73,6 +86,9 @@ public class LogEntrySolrItem implements Serializable {
     
     @Field("formatId")
     String formatId;
+    
+    @Field("formatType")
+    String formatType;
     
     @Field("size")
     long size;
@@ -134,6 +150,98 @@ public class LogEntrySolrItem implements Serializable {
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
         
     }
+
+	/*
+	 * Fill in the solrItem fields for fields that are either obtained
+	 * from systemMetadata (i.e. formatId, size for a given pid) or are
+	 * derived from a field in the logEntry (i.e. location names,
+	 * geohash_* are derived from the ipAddress in the logEntry)
+	 *
+	 * @param systemMetadata system metadata object associed with the pid for this log entry
+	 * @param subjectsAllowedRead subjects that have read access for the pid of this log entry
+	 * @param isPublicSubject does this pid have public read
+	 * @param geoIPsvc GeoIP service instance
+	 * @param nodeId DataONE node identifier
+	 * @param dateAggregated date that this log entry was originally harvested/aggregated
+	 */
+    
+	public void loadDerivedFields(SystemMetadata systemMetadata,
+			List<String> subjectsAllowedRead, boolean isPublicSubject,
+			GeoIPService geoIPsvc, String nodeId, Date dateAggregated) {
+
+		
+		String geohash = null;
+		double geohashLat = 0;
+		double geohashLong = 0;
+		
+		// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
+		// at different resolutions, or for searching/filtering
+		// Length of geohash to retrieve from service
+		int geohashLength = 9;
+
+		this.setIsPublic(isPublicSubject);
+		this.setDateAggregated(dateAggregated);
+		this.setReadPermission(subjectsAllowedRead);
+		
+		/* Populate the fields that come from systemMetadata.
+		 */
+		if (systemMetadata != null) {
+			formatId = systemMetadata.getFormatId().getValue();
+			this.setFormatId(formatId);
+			if (formatId != null) {
+				ObjectFormat format = null;
+				try {
+					ObjectFormatIdentifier objectFormat = new ObjectFormatIdentifier();
+					objectFormat.setValue(formatId);
+					format = ObjectFormatCache.getInstance().getFormat(
+							objectFormat);
+					this.setFormatType(format.getFormatType());
+				} catch (BaseException e) {
+					logger.warn("Unable to obtain formatType for pid "
+							+ this.getPid() + ": " + e.getMessage());
+				}
+			}
+			this.setSize(systemMetadata.getSize().longValue());
+			this.setRightsHolder(systemMetadata.getRightsHolder().getValue());
+		}
+
+		// Set the geographic location attributes determined from the IP address
+		// This will be stored in the Solr index as a geohash and as lat, long
+		// spatial type
+		if (geoIPsvc != null && this.getIpAddress() != null) {
+			// Set the geographic location attributes determined from the IP
+			// address
+			geoIPsvc.initLocation(this.getIpAddress());
+			// Add the location attributes to the current Solr document
+			this.setCountry(geoIPsvc.getCountry());
+			this.setRegion(geoIPsvc.getRegion());
+			this.setCity(geoIPsvc.getCity());
+			// Calculate the geohash values based on the lat, long returned from
+			// the GeoIP service.
+			geohashLat = geoIPsvc.getLatitude();
+			geohashLong = geoIPsvc.getLongitude();
+			String location = String.format("%.4f", geohashLat) + ", "
+					+ String.format("%.4f", geohashLong);
+			System.out.println("location: " + location);
+			this.setLocation(location);
+			try {
+				geohash = GeoHash.withCharacterPrecision(geohashLat,
+						geohashLong, geohashLength).toBase32();
+				this.setGeohash_1(geohash.substring(0, 1));
+				this.setGeohash_2(geohash.substring(0, 2));
+				this.setGeohash_3(geohash.substring(0, 3));
+				this.setGeohash_4(geohash.substring(0, 4));
+				this.setGeohash_5(geohash.substring(0, 5));
+				this.setGeohash_6(geohash.substring(0, 6));
+				this.setGeohash_7(geohash.substring(0, 7));
+				this.setGeohash_8(geohash.substring(0, 8));
+				this.setGeohash_9(geohash.substring(0, 9));
+			} catch (IllegalArgumentException iae) {
+				logger.error("Error calculating geohash for log record id "
+						+ this.getId() + ": " + iae.getMessage());
+			}
+		}
+	}
     
     public String getCity() {
         return city;
@@ -276,6 +384,14 @@ public class LogEntrySolrItem implements Serializable {
     public void setFormatId(String formatId) {
         this.formatId = formatId;
     }   
+    
+    public String getFormatType() {
+        return formatType;
+    }
+
+    public void setFormatType(String formatType) {
+        this.formatType = formatType;
+    } 
     
     public String getIpAddress() {
         return ipAddress;
