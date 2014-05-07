@@ -28,8 +28,6 @@ import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.SystemMetadata;
 
-import ch.hsr.geohash.GeoHash;
-
 import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
@@ -38,11 +36,11 @@ import com.hazelcast.core.IMap;
 import java.io.FileNotFoundException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.codec.EncoderException;
 import org.apache.commons.codec.net.URLCodec;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
@@ -187,11 +185,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         String dbFilename = Settings.getConfiguration().getString(
 				"LogAggregator.geoIPdbName");
 		GeoIPService geoIPsvc = null;
-		
-		String geohash = null;
-		double geohashLat = 0;
-		double geohashLong = 0;
-		
+
 		try {
 			geoIPsvc = GeoIPService.getInstance(dbFilename);
 		} catch (FileNotFoundException fnf) {
@@ -202,50 +196,23 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 		}
 
         List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
-        
-        // Length of geohash to retrieve from service
-        int geohashLength = 9;
-        for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
-            solrItem.setIsPublic(isPublicSubject);
-            solrItem.setReadPermission(subjectsAllowedRead);
-            solrItem.setFormatId(systemMetadata.getFormatId().getValue());
-            solrItem.setSize(systemMetadata.getSize().longValue());
-            logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
-            solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
-            
-            // Set the geographic location attributes determined from the IP address
-            // This will be stored in the Solr index as a geohash and as lat, long spatial type
-            if (geoIPsvc != null) {
-				// Set the geographic location attributes determined from the IP address
-            	geoIPsvc.initLocation(solrItem.getIpAddress());
-				// Add the location attributes to the current Solr document
-				solrItem.setCountry(geoIPsvc.getCountry());
-				solrItem.setRegion(geoIPsvc.getRegion());
-				solrItem.setCity(geoIPsvc.getCity());
-				// Calculate the geohash values based on the lat, long returned from
-				// the GeoIP service.
-				geohashLat = geoIPsvc.getLatitude();
-				geohashLong = geoIPsvc.getLongitude();
-	    		String location = String.format("%.4f", geohashLat) + ", " + String.format("%.4f", geohashLong);
-	    		System.out.println("location: " + location);
-	    		solrItem.setLocation(location);
-	    		try {
-	    			geohash = GeoHash.withCharacterPrecision(geohashLat, geohashLong, geohashLength).toBase32();
-		    		solrItem.setGeohash_1(geohash.substring(0, 1));
-		    		solrItem.setGeohash_2(geohash.substring(0, 2));
-		    		solrItem.setGeohash_3(geohash.substring(0, 3));
-		    		solrItem.setGeohash_4(geohash.substring(0, 4));
-		    		solrItem.setGeohash_5(geohash.substring(0, 5));
-		    		solrItem.setGeohash_6(geohash.substring(0, 6));
-		    		solrItem.setGeohash_7(geohash.substring(0, 7));
-		    		solrItem.setGeohash_8(geohash.substring(0, 8));
-		    		solrItem.setGeohash_9(geohash.substring(0, 9));
-	    		} catch (IllegalArgumentException iae) {
-	    			logger.error("Error calculating geohash for log record id " + solrItem.getId() + ": " + iae.getMessage());
-	    		}
-            }
-        }
-        
+
+		for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
+			/*
+			 * Fill in the solrItem fields for fields that are either obtained
+			 * from systemMetadata (i.e. formatId, size for a given pid) or are
+			 * derived from a field in the logEntry (i.e. location names,
+			 * geohash_* are derived from the ipAddress in the logEntry). For
+			 * dateAggregated, use the date that was in the existing log record
+			 * and don't replace it with the current date - as we are rewritting
+			 * log records to stay current with changes to systemMetadata - i.e.
+			 * these event records were already harvested and are just being
+			 * updated.
+			 */
+			solrItem.loadDerivedFields(systemMetadata, subjectsAllowedRead,
+					isPublicSubject, geoIPsvc, solrItem.getNodeIdentifier(), solrItem.getDateAggregated());
+		}
+
         // publish 100 at a time, do not overwhelm the
         // network with massive packets, or too many small packets
         int startIndex = 0;

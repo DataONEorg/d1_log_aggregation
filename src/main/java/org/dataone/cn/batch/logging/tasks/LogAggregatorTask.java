@@ -22,26 +22,19 @@
 
 package org.dataone.cn.batch.logging.tasks;
 
-import ch.hsr.geohash.GeoHash;
-
 import com.hazelcast.core.AtomicNumber;
-import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
 
-import java.io.IOException;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
-import javax.security.auth.x500.X500Principal;
-
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
-import org.dataone.client.auth.CertificateManager;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
@@ -59,7 +52,6 @@ import org.dataone.service.exceptions.NotAuthorized;
 import org.dataone.service.exceptions.NotFound;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
-import org.dataone.service.types.v1.AccessRule;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.Log;
 import org.dataone.service.types.v1.LogEntry;
@@ -67,9 +59,7 @@ import org.dataone.service.types.v1.Node;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.NodeType;
 import org.dataone.service.types.v1.Session;
-import org.dataone.service.types.v1.Subject;
 import org.dataone.service.types.v1.SystemMetadata;
-import org.dataone.service.util.Constants;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -203,14 +193,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 			} catch (Exception e) {
 				throw new ServiceFailure(e.getMessage(), "Unable to initialize the GeoIP service");
 			}
-			
-			String geohash = null;
-			// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
-			// at different resolutions, or for searching/filtering
-			double geohashLat = 0;
-			double geohashLong = 0;
-	        // Length of geohash to retrieve from service
-	        int geohashLength = 9;
+
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 List<LogEntry> readQueue = new ArrayList<LogEntry>();
@@ -242,7 +225,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 if (readQueue != null && !readQueue.isEmpty()) {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
                     List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(queryTotalLimit);
-            		
+                    
+                    String formatId = null;
+                    String formatType = null;
+                    String nodeId = null;
+                    List<String> subjectsAllowedRead = new ArrayList<String>();
                     // process the LogEntries into Solr Items that can be persisted
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
@@ -250,56 +237,31 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         if (logEntry.getDateLogged().after(mostRecentLoggedDate)) {
                             mostRecentLoggedDate = logEntry.getDateLogged();
                         }
-                        Date now = new Date();
                         
-                        LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
                         boolean isPublicSubject = false;
-                        solrItem.setIsPublic(isPublicSubject);
-                        solrItem.setDateAggregated(now);
+                        Date now = new Date();
+                        Date dateAggregated = now;
+                        LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
+                        SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
+                        
                         // overwrite whatever the logEntry tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
-                        solrItem.setNodeIdentifier(d1NodeReference.getValue());
-                        SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
+                        nodeId = d1NodeReference.getValue();
+  
                         if (systemMetadata != null) {
-                            List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
-                            solrItem.setReadPermission(subjectsAllowedRead);
-                            solrItem.setFormatId(systemMetadata.getFormatId().getValue());
-                            solrItem.setSize(systemMetadata.getSize().longValue());
-                            logger.debug("pid: " + solrItem.getPid() + ", rightsHolder: " + systemMetadata.getRightsHolder().getValue());
-                            solrItem.setRightsHolder(systemMetadata.getRightsHolder().getValue());
-                            
-							if (geoIPsvc != null) {
-								// Set the geographic location attributes determined from the IP address
-								geoIPsvc.initLocation(solrItem.getIpAddress());
-								// Add the location attributes to the current Solr document
-								solrItem.setCountry(geoIPsvc.getCountry());
-								solrItem.setRegion(geoIPsvc.getRegion());
-								solrItem.setCity(geoIPsvc.getCity());
-								// Calculate the geohash values based on the lat, long returned from
-								// the GeoIP service.
-								geohashLat = geoIPsvc.getLatitude();
-								geohashLong = geoIPsvc.getLongitude();
-					    		String location = String.format("%.4f", geohashLat ) + ", " + String.format("%.4f", geohashLong);
-					    		solrItem.setLocation(location);
-					    		System.out.println("location: " + location);
-					    		try {
-					    			geohash = GeoHash.withCharacterPrecision(geohashLat, geohashLong, geohashLength).toBase32();
-						    		solrItem.setGeohash_1(geohash.substring(0, 1));
-						    		solrItem.setGeohash_2(geohash.substring(0, 2));
-						    		solrItem.setGeohash_3(geohash.substring(0, 3));
-						    		solrItem.setGeohash_4(geohash.substring(0, 4));
-						    		solrItem.setGeohash_5(geohash.substring(0, 5));
-						    		solrItem.setGeohash_6(geohash.substring(0, 6));
-						    		solrItem.setGeohash_7(geohash.substring(0, 7));
-						    		solrItem.setGeohash_8(geohash.substring(0, 8));
-						    		solrItem.setGeohash_9(geohash.substring(0, 9));
-					    		} catch (IllegalArgumentException iae) {
-					    			logger.error("Error calculating geohash for log record id " + solrItem.getId() + ": " + iae.getMessage());
-					    		}
-							}
+                            subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);                            
                         } else {
                         	logger.error("System metadata is null for pid: " + solrItem.getPid());
                         }
+                        
+            			/*
+            			 * Fill in the solrItem fields for fields that are either obtained
+            			 * from systemMetadata (i.e. formatId, size for a given pid) or are
+            			 * derived from a field in the logEntry (i.e. location names,
+            			 * geohash_* are derived from the ipAddress in the logEntry).
+            			 */
+                    	solrItem.loadDerivedFields(systemMetadata, subjectsAllowedRead, isPublicSubject, geoIPsvc, nodeId, dateAggregated);
+
                         Long integral = new Long(now.getTime());
                         Long decimal = new Long(hzAtomicNumber.incrementAndGet());
                         String id = integral.toString() + "." + decimal.toString();
