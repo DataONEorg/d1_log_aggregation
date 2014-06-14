@@ -120,9 +120,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
     // Amount of time to delay the start of all jobs at initialization
     // so that not all jobs start at once, they should be staggered
-    static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes");
+    static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes", 10);
     // Amount of time to delay the start the recovery job at initialization
-    static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes");
+    static final int delayRecoveryOffset = Settings.getConfiguration().getInt("LogAggregator.delayRecoveryOffset.minutes", 5);
     private static final String hzNodesName = Settings.getConfiguration().getString("dataone.hazelcast.nodes");
     /* 
      * Called by Spring to bootstrap log aggregation
@@ -146,14 +146,14 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             } 
             // log aggregregation should ideally execute at least once per day per membernode
             // Sets the Period of time between sequential job executions, 24 hrs is default
-            int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
-            String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
+            int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period", 24);
+            String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField", "default");
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
                 simpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
                 simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
-                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).withMisfireHandlingInstructionIgnoreMisfires();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else {
                 simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             }
@@ -272,7 +272,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
      */
     private void addHarvest(NodeReference key, Node node, Date startDate) {
         if (node.getState().equals(NodeState.UP)
-                && node.isSynchronize() && node.getType().equals(NodeType.MN)) {
+                 && node.getType().equals(NodeType.MN)) {
 
             // the current mn node is owned by this hazelcast cn node member
             // so schedule a job based on the settings of the node
