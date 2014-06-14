@@ -28,6 +28,7 @@ import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.client.ObjectFormatCache;
 import org.dataone.cn.batch.logging.GeoIPService;
+import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.service.exceptions.BaseException;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.ObjectFormat;
@@ -56,6 +57,7 @@ public class LogEntrySolrItem implements Serializable {
     @Field("entryId")
     String entryId;
 
+    // Currently (20140612) this field appears to be unused
     @Field("isPublic")
     boolean isPublic = false;
 
@@ -80,6 +82,9 @@ public class LogEntrySolrItem implements Serializable {
 
     @Field("dateLogged")
     Date dateLogged;
+    
+    @Field("dateUpdated")
+    Date dateUpdated;
 
     @Field("nodeId")
     String nodeIdentifier;
@@ -148,41 +153,20 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-        
     }
 
 	/*
 	 * Fill in the solrItem fields for fields that are either obtained
-	 * from systemMetadata (i.e. formatId, size for a given pid) or are
-	 * derived from a field in the logEntry (i.e. location names,
-	 * geohash_* are derived from the ipAddress in the logEntry)
-	 *
-	 * @param systemMetadata system metadata object associed with the pid for this log entry
-	 * @param subjectsAllowedRead subjects that have read access for the pid of this log entry
-	 * @param isPublicSubject does this pid have public read
-	 * @param geoIPsvc GeoIP service instance
-	 * @param nodeId DataONE node identifier
-	 * @param dateAggregated date that this log entry was originally harvested/aggregated
+	 * from systemMetadata (i.e. formatId, size for a given pid)
+	 * 
+	 * @param systemMetadata system metadata object associated with the pid for this log entry
 	 */
     
-	public void loadDerivedFields(SystemMetadata systemMetadata,
-			List<String> subjectsAllowedRead, boolean isPublicSubject,
-			GeoIPService geoIPsvc, String nodeId, Date dateAggregated) {
+	public void updateSysmetaFields(SystemMetadata systemMetadata) {
 
-		
-		String geohash = null;
-		double geohashLat = 0;
-		double geohashLong = 0;
-		
-		// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
-		// at different resolutions, or for searching/filtering
-		// Length of geohash to retrieve from service
-		int geohashLength = 9;
-
-		this.setIsPublic(isPublicSubject);
-		this.setDateAggregated(dateAggregated);
-		this.setReadPermission(subjectsAllowedRead);
-		
+		boolean isPublicSubject = false;
+	    LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
+	    String formmatId = null;
 		/* Populate the fields that come from systemMetadata.
 		 */
 		if (systemMetadata != null) {
@@ -201,9 +185,33 @@ public class LogEntrySolrItem implements Serializable {
 							+ this.getPid() + ": " + e.getMessage());
 				}
 			}
+			
+			List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
+			this.setIsPublic(isPublicSubject);
+			this.setReadPermission(subjectsAllowedRead);
 			this.setSize(systemMetadata.getSize().longValue());
 			this.setRightsHolder(systemMetadata.getRightsHolder().getValue());
+			this.setIsPublic(isPublicSubject);
 		}
+	}
+	
+	/*
+	 * Fill in the solrItem fields for fields that are
+	 * derived from the ipAddress from the logEntry (i.e. city, state,
+	 * geohash_* are derived from the ipAddress in the logEntry)
+	 *
+	 * @param geoIPsvc GeoIP service instance
+	 */
+	public void updateLocationFields(GeoIPService geoIPsvc) {
+
+		String geohash = null;
+		double geohashLat = 0;
+		double geohashLong = 0;
+		
+		// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
+		// at different resolutions, or for searching/filtering
+		// Length of geohash to retrieve from service
+		int geohashLength = 9;
 
 		// Set the geographic location attributes determined from the IP address
 		// This will be stored in the Solr index as a geohash and as lat, long
@@ -358,6 +366,14 @@ public class LogEntrySolrItem implements Serializable {
     }
 
     public void setDateLogged(Date dateLogged) {
+        this.dateLogged = dateLogged;
+    }
+
+    public Date getDateUpdated() {
+        return dateLogged;
+    }
+
+    public void setDateUpdated(Date dateLogged) {
         this.dateLogged = dateLogged;
     }
 

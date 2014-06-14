@@ -73,7 +73,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private IMap<Identifier, SystemMetadata> systemMetadata;
     private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private SolrServer localhostSolrServer;
-    private LogAccessRestriction logAccessRestriction;
+    //private LogAccessRestriction logAccessRestriction;
     private URLCodec urlCodec = new URLCodec("UTF-8");
     public SystemMetadataEntryListener() {
       String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
@@ -94,7 +94,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             logger.error(ex.getMessage());
             throw new RuntimeException();
         }
-        logAccessRestriction = new LogAccessRestriction();
+        //logAccessRestriction = new LogAccessRestriction();
     }
 
     public void start() {
@@ -181,36 +181,20 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     }
 
     private void processLogEntries(List<LogEntrySolrItem> logEntrySolrItemList, SystemMetadata systemMetadata) {
-        boolean isPublicSubject = false;
-        String dbFilename = Settings.getConfiguration().getString(
+
+    	String dbFilename = Settings.getConfiguration().getString(
 				"LogAggregator.geoIPdbName");
-		GeoIPService geoIPsvc = null;
+        Date now = new Date();
 
-		try {
-			geoIPsvc = GeoIPService.getInstance(dbFilename);
-		} catch (FileNotFoundException fnf) {
-			geoIPsvc = null;
-		} catch (Exception e) {
-			logger.error("Error opening GeoIP service" + e.getMessage());
-			geoIPsvc = null;
-		}
-
-        List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
+        //List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
 
 		for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
 			/*
 			 * Fill in the solrItem fields for fields that are either obtained
-			 * from systemMetadata (i.e. formatId, size for a given pid) or are
-			 * derived from a field in the logEntry (i.e. location names,
-			 * geohash_* are derived from the ipAddress in the logEntry). For
-			 * dateAggregated, use the date that was in the existing log record
-			 * and don't replace it with the current date - as we are rewritting
-			 * log records to stay current with changes to systemMetadata - i.e.
-			 * these event records were already harvested and are just being
-			 * updated.
+			 * from systemMetadata.
 			 */
-			solrItem.loadDerivedFields(systemMetadata, subjectsAllowedRead,
-					isPublicSubject, geoIPsvc, solrItem.getNodeIdentifier(), solrItem.getDateAggregated());
+			solrItem.updateSysmetaFields(systemMetadata);
+			solrItem.setDateUpdated(now);
 		}
 
         // publish 100 at a time, do not overwhelm the

@@ -93,6 +93,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     static private int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
     static private String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     
     public LogAggregatorTask(NodeReference d1NodeReference) {
         this.d1NodeReference = d1NodeReference;
@@ -226,10 +227,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
                     List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(queryTotalLimit);
                     
-                    String formatId = null;
-                    String formatType = null;
                     String nodeId = null;
-                    List<String> subjectsAllowedRead = new ArrayList<String>();
                     // process the LogEntries into Solr Items that can be persisted
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
@@ -238,7 +236,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                             mostRecentLoggedDate = logEntry.getDateLogged();
                         }
                         
-                        boolean isPublicSubject = false;
                         Date now = new Date();
                         Date dateAggregated = now;
                         LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
@@ -247,24 +244,26 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         // overwrite whatever the logEntry tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
                         nodeId = d1NodeReference.getValue();
-  
-                        if (systemMetadata != null) {
-                            subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);                            
-                        } else {
-                        	logger.error("System metadata is null for pid: " + solrItem.getPid());
-                        }
-                        
+                        solrItem.setNodeIdentifier(nodeId);
+                        solrItem.setDateAggregated(now);
+                        solrItem.setDateUpdated(initializedDate);
             			/*
             			 * Fill in the solrItem fields for fields that are either obtained
             			 * from systemMetadata (i.e. formatId, size for a given pid) or are
             			 * derived from a field in the logEntry (i.e. location names,
             			 * geohash_* are derived from the ipAddress in the logEntry).
             			 */
-                    	solrItem.loadDerivedFields(systemMetadata, subjectsAllowedRead, isPublicSubject, geoIPsvc, nodeId, dateAggregated);
-
-                        Long integral = new Long(now.getTime());
-                        Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                        String id = integral.toString() + "." + decimal.toString();
+            			solrItem.updateSysmetaFields(systemMetadata);
+                    	solrItem.updateLocationFields(geoIPsvc);
+                    	
+                        //Long integral = new Long(now.getTime());
+                        //Long decimal = new Long(hzAtomicNumber.incrementAndGet());
+                        //String id = integral.toString() + "." + decimal.toString();
+                    	
+                        /* Use the Member Node identifier combined with entryId for the Solr unique key. This natural key should be 
+                         * globally unique, but also ensure that re-harvesting will not add duplicate records.
+                         */
+                        String id = nodeId + "." + logEntry.getEntryId();
                         solrItem.setId(id);
                         logEntrySolrItemList.add(solrItem);
                     }
