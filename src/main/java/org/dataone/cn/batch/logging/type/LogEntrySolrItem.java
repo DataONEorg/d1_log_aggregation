@@ -370,11 +370,11 @@ public class LogEntrySolrItem implements Serializable {
     }
 
     public Date getDateUpdated() {
-        return dateLogged;
+        return dateUpdated;
     }
 
-    public void setDateUpdated(Date dateLogged) {
-        this.dateLogged = dateLogged;
+    public void setDateUpdated(Date dateUpdated) {
+        this.dateUpdated = dateUpdated;
     }
 
     public String getEntryId() {
