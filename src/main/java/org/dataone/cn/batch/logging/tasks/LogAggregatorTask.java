@@ -22,16 +22,16 @@
 
 package org.dataone.cn.batch.logging.tasks;
 
-import com.hazelcast.core.AtomicNumber;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
-import com.hazelcast.core.ITopic;
 
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
@@ -42,7 +42,7 @@ import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
-import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
+//import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.configuration.Settings;
 import org.dataone.service.cn.impl.v1.NodeRegistryService;
@@ -66,9 +66,9 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.MutableDateTime;
 
 /**
- * A distributable and executable task that retrieves a list of LogEntry
- * by calling log on a MN (or localhost cn)  and then publishes them on
- * the LogEntryTopic for processing. It will retrieve and submit
+ * An executable task that retrieves a list of LogEntry
+ * by calling log on a MN (or localhost cn)  and then pushes then
+ * to the Java queue indexLogEntryQueue for processing. It will retrieve and submit
  * in batches of 1000 as the default.
  *
  * As an executable, it will return a date that is the latest LogLastAggregated
@@ -79,26 +79,34 @@ import org.joda.time.MutableDateTime;
  * @author waltz
  */
 public class LogAggregatorTask implements Callable<Date>, Serializable {
-
-    NodeReference d1NodeReference;
+	
+	private static final long serialVersionUID = 4303107910755451219L;
+	NodeReference d1NodeReference;
     private Session session;
 
     private Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size", 1000);
     private Integer queryTotalLimit = Settings.getConfiguration().getInt("LogAggregator.query_total_limit", 10000);
-    private static final String geoIPdbName = Settings.getConfiguration().getString("LogAggregator.geoIPdbName");
-    static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
-    private static AtomicNumber hzAtomicNumber;
-    private String atomicNumberSequence = Settings.getConfiguration().getString("dataone.hazelcast.atomicNumberSequence");
     String hzSystemMetaMapString = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
     static private int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
     static private String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
+    Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
-    
-    public LogAggregatorTask(NodeReference d1NodeReference) {
-        this.d1NodeReference = d1NodeReference;
 
+
+    /* Initialize the MN harvesting task with the D1 node reference for the MN to be harvested, and the shared queue that harvested
+     * records are pushed to for further processing.
+     */
+    public LogAggregatorTask(NodeReference d1NodeReference, BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
+        this.d1NodeReference = d1NodeReference;
+        this.indexLogEntryQueue = indexLogEntryQueue;
     }
+    
+    public void init() {
+        logger.info("Initializing LogEntryQueueTask");
+    }
+    
     private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
     /**
      * Implement the Callable interface,  retrieves logging information from a D1 Node
@@ -112,7 +120,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      */
     @Override
     public Date call() throws ExecutionException {
-        
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Starting");
         LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
@@ -155,12 +162,12 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
             // logger is not  be serializable, but no need to make it transient imo
 
-            HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
-            ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
+            //HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
+            //ITopic<List<LogEntrySolrItem>> hzLogEntryTopic = hazelcast.getTopic(hzLogEntryTopicName);
             // Need the LinkedHashMap to preserver insertion order
             Node d1Node = nodeRegistryService.getNode(d1NodeReference);
             Date lastMofidiedDate = nodeAccess.getLogLastAggregated(d1NodeReference);
-            hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
+            //hzAtomicNumber = hazelcast.getAtomicNumber(atomicNumberSequence);
             if (lastMofidiedDate == null) {
                 lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
             }
@@ -247,12 +254,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         solrItem.setNodeIdentifier(nodeId);
                         solrItem.setDateAggregated(now);
                         solrItem.setDateUpdated(initializedDate);
+
             			/*
             			 * Fill in the solrItem fields for fields that are either obtained
             			 * from systemMetadata (i.e. formatId, size for a given pid) or are
             			 * derived from a field in the logEntry (i.e. location names,
             			 * geohash_* are derived from the ipAddress in the logEntry).
             			 */
+
             			solrItem.updateSysmetaFields(systemMetadata);
                     	solrItem.updateLocationFields(geoIPsvc);
                     	
@@ -277,9 +286,18 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         if (logEntrySolrItemList.size() < endIndex) {
                             endIndex = logEntrySolrItemList.size();
                         }
-                        List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
-                        publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
-                        hzLogEntryTopic.publish(publishEntrySolrItemList);
+                        
+                        List<LogEntrySolrItem> logList = new ArrayList<LogEntrySolrItem>(100);
+                        logList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
+                        //hzLogEntryTopic.publish(publishEntrySolrItemList);
+                        
+                        try {
+                            indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
+                        } catch (InterruptedException ex) {
+                            for (LogEntrySolrItem e : logList) {
+                                logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+                            }
+                        }
 
                         try {
                             // Simple way to throttle publishing of messages

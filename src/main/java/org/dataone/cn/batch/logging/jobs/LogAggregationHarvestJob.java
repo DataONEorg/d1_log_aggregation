@@ -17,26 +17,29 @@
  */
 package org.dataone.cn.batch.logging.jobs;
 
-import com.hazelcast.core.DistributedTask;
-import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
+
 import java.util.Date;
-import java.util.concurrent.Callable;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
+import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.NodeReference;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
+
 import java.text.SimpleDateFormat;
+
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
@@ -62,12 +65,14 @@ import org.springframework.core.task.AsyncTaskExecutor;
 @DisallowConcurrentExecution
 public class LogAggregationHarvestJob implements Job {
 
+    private String nodeIdentifier = null;
+    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue; // Set by Quartz (from LogAggregationScheduleManager)
+
     @Override
     public void execute(JobExecutionContext jobContext) throws JobExecutionException {
 
         // do not submit the localCNIdentifier to Hazelcast for execution
         // rather execute it locally on the machine
-
         SimpleDateFormat format =
                 new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
         Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
@@ -75,7 +80,7 @@ public class LogAggregationHarvestJob implements Job {
         IMap<String, String> hzLogAggregatorLockMap = null;
         NodeReference nodeReference = new NodeReference();
         JobExecutionException jex = null;
-        String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
+        //String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
         String lockName = nodeIdentifier;
         logger.info("Job-" + nodeIdentifier +  " executing job");
         try {
@@ -108,7 +113,7 @@ public class LogAggregationHarvestJob implements Job {
                         nodeAccess.setAggregateLogs(nodeReference, false);
 
                         
-                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference);
+                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference,indexLogEntryQueue);
                         // If the node reference is the local machine nodId, then
                         // do not submit to hazelcast for distribution
                         // Rather, execute it on the local machine
@@ -116,12 +121,13 @@ public class LogAggregationHarvestJob implements Job {
                             // Execute on localhost
                             AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
                             future = executor.submit(harvestTask);
-                        } else {
-                            // Distribute the task to any hazelcast process cluster instance
-                            DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
-                            ExecutorService executor = hazelcast.getExecutorService();
-                            future = executor.submit(dtask);
                         }
+//                        } else {
+//                            // Distribute the task to any hazelcast process cluster instance
+//                            DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
+//                            ExecutorService executor = hazelcast.getExecutorService();
+//                            future = executor.submit(dtask);
+//                        }
                         Date lastProcessingCompletedDate = null;
                         try {
                             lastProcessingCompletedDate = (Date) future.get();
@@ -169,4 +175,17 @@ public class LogAggregationHarvestJob implements Job {
             throw jex;
         }
     }
+    
+    public void setNodeIdentifier(String nodeIdentifier) {
+    	this.nodeIdentifier = nodeIdentifier;
+    }
+    
+    public String getNodeIdentifier() {
+    	return this.nodeIdentifier;
+    }
+    
+    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
+    	this.indexLogEntryQueue = indexLogEntryQueue;
+    }
+
 }

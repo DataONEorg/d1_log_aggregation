@@ -33,7 +33,6 @@ import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.IMap;
 
-import java.io.FileNotFoundException;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -41,14 +40,11 @@ import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.codec.net.URLCodec;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.util.ClientUtils;
-import org.dataone.cn.batch.logging.GeoIPService;
-import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.hazelcast.HazelcastClientFactory;
 import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
@@ -69,12 +65,13 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private static Logger logger = Logger.getLogger(SystemMetadataEntryListener.class.getName());
     private static HazelcastClient hzclient;
     private static final String HZ_SYSTEM_METADATA = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
-    private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
+    //private static final String HZ_LOGENTRY_TOPICNAME = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
     private IMap<Identifier, SystemMetadata> systemMetadata;
     private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     private SolrServer localhostSolrServer;
     //private LogAccessRestriction logAccessRestriction;
-    private URLCodec urlCodec = new URLCodec("UTF-8");
+    //private URLCodec urlCodec = new URLCodec("UTF-8");
+
     public SystemMetadataEntryListener() {
       String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
         String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
@@ -181,9 +178,10 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     }
 
     private void processLogEntries(List<LogEntrySolrItem> logEntrySolrItemList, SystemMetadata systemMetadata) {
-
-    	String dbFilename = Settings.getConfiguration().getString(
-				"LogAggregator.geoIPdbName");
+        //boolean isPublicSubject = false;
+        //String dbFilename = Settings.getConfiguration().getString(
+		//		"LogAggregator.geoIPdbName");
+        
         Date now = new Date();
 
         //List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
@@ -231,7 +229,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     public void entryRemoved(EntryEvent<Identifier, SystemMetadata> arg0) {
     }
     
-    public BlockingQueue getIndexLogEntryQueue() {
+    public BlockingQueue<List<LogEntrySolrItem>> getIndexLogEntryQueue() {
         return indexLogEntryQueue;
     }
 
