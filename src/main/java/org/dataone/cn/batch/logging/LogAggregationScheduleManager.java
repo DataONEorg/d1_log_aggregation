@@ -22,7 +22,6 @@ import org.dataone.cn.ldap.ProcessingState;
 import org.dataone.cn.ldap.NodeAccess;
 import org.quartz.JobDataMap;
 import org.dataone.cn.batch.logging.jobs.LogAggregationRecoverJob;
-import org.dataone.cn.batch.logging.jobs.LogAggregationSyncJob;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.DateTimeFormat;
@@ -111,7 +110,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
     private static String recoveryGroupName = "LogAggregatorRecovery";
-    private static String syncGroupName = "LogAggregatorSync";
     private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     
     private HazelcastInstance hazelcast;
@@ -127,7 +125,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     private static SimpleScheduleBuilder harvestSimpleTriggerSchedule = null;
     // Recovery only runs once for each CN
     private static SimpleScheduleBuilder recoverySimpleTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
-    private static SimpleScheduleBuilder syncSimpleTriggerSchedule = null;
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
@@ -172,9 +169,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
                 simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             }
             
-            int syncTriggerIntervalMinutes = Settings.getConfiguration().getInt("LogAggregator.sync.triggerInterval.minutes");
-            syncSimpleTriggerSchedule = simpleSchedule().repeatForever().withIntervalInMinutes(syncTriggerIntervalMinutes).withMisfireHandlingInstructionFireNow();   
-
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
             partitionService = hazelcast.getPartitionService();
@@ -198,8 +192,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
 	            // Only the active CN will harvest log records from MNs. replica CNs will keep their
 	            // logs current by syncing with the active.
 				this.manageHarvest();
-			} else {
-				this.scheduleSyncJob();
 			}
 
             systemMetadataEntryListener.start();
@@ -472,43 +464,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             nodeAccess.setProcessingState(localNodeReference, ProcessingState.Active);
         }
     }
-    /*
-     * Schedule synchronization jobs to update replica node log aggregation Solr index with the index of
-     * the active CN. This synchronization hap
-     *
-     */
-    public void scheduleSyncJob() throws SolrServerException, ServiceFailure, MalformedURLException {
-        NodeReference localNodeReference = new NodeReference();
-        localNodeReference.setValue(localCnIdentifier);
- 
-		// schedule the sync process
-		logger.debug("Sync jobs.");
-
-		// setup quartz scheduling
-		DateTime startTime = new DateTime();
-		// provide an offset to ensure the listener is up and running
-		// it would be bad to recover before the listener is recording
-		// new entries
-		startTime = startTime.plusMinutes(delayRecoveryOffset);
-		// With the active/passive architecture, processing is not shared between nodes, so 
-		// we don't need to store the recovery query to use or the nodeId that is executing
-		// this query, as that will be determined by the syncJob
-        JobDataMap jobDataMap = new JobDataMap();
-        jobDataMap.put("localhostSolrServer", localhostSolrServer);
-		JobKey jobKey = new JobKey("recovery-job" + localCnIdentifier, syncGroupName);
-		TriggerKey triggerKey = new TriggerKey("recovery-trigger" + localCnIdentifier, syncGroupName);
-		JobDetail job = newJob(LogAggregationSyncJob.class)
-				.withIdentity(jobKey).usingJobData(jobDataMap).build();
-		Trigger trigger = newTrigger().withIdentity(triggerKey)
-				.startAt(startTime.toDate())
-				.withSchedule(syncSimpleTriggerSchedule).build();
-		try {
-			scheduler.scheduleJob(job, trigger);
-		} catch (SchedulerException ex) {
-			logger.error("Unable to initialize job key " + localCnIdentifier
-					+ " for Job Recovery scheduling: ", ex);
-		}
-	}
     
     public BlockingQueue<List<LogEntrySolrItem>> getIndexLogEntryQueue() {
         return indexLogEntryQueue;
