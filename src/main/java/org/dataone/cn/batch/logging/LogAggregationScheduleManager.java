@@ -182,32 +182,24 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             scheduler = schedulerFactory.getScheduler();
 
             /*
-            * The active node will only run recovery once when it starts up. The active needs to run recovery because it
-            * could be starting up as the active for the first time, either because it is a new CN or because it might have
-            * been a replica formerly, and other CNs might have more recend log entries.
-            * replica nodes will only recover from the active and will run recovery at regular intervals to stay in sync with the active.
-            */
-			if (localCnIdentifier.compareToIgnoreCase(activeCnIdentifier) == 0) {
-				this.scheduleRecoveryJob();
-	            // Only the active CN will harvest log records from MNs. replica CNs will keep their
-	            // logs current by syncing with the active.
+            * The active CN (in the single master CN configuration) is the only CN that will schedule harvest jobs and create new
+            * event log entries. Passive CN event indexes are synchronized and recovered currently via Apache SolrCloud */
+            if (activeCnIdentifier == null) {
+                // The property for the active CN was not set in node.properties, so we will assume that this is 
+                // a passive node.
+            	logger.warn("cn.nodeId.active property not set in node.properties, so it is assumed that this is a passive CN");
+            } else if (localCnIdentifier.compareToIgnoreCase(activeCnIdentifier) == 0) {
+				//this.scheduleRecoveryJob();
+            	logger.info("Current nodeId ' + localCnIdentifier + ' is the active CN, therefor MN event log harvest jobs will be submitted");
 				this.manageHarvest();
-			}
+            }
 
             systemMetadataEntryListener.start();
 
-            //partitionService.addMigrationListener(this);
-            //IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
-            //hzNodes.addEntryListener(this, true);
-        } catch (SolrServerException ex) {
-            ex.printStackTrace();
-            throw new IllegalStateException("SolrServer connection failed: " + ex.getMessage());
         } catch (IOException ex) {
             throw new IllegalStateException("Loading properties file failedUnable to initialize jobs for scheduling: " + ex.getMessage());
         } catch (SchedulerException ex) {
             throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
-        } catch (ServiceFailure ex) {
-            throw new IllegalStateException("NodeService failed: " + ex.getMessage());
         }
     }
 
