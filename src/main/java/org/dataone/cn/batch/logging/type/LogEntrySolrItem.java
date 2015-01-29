@@ -23,6 +23,11 @@
 package org.dataone.cn.batch.logging.type;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
@@ -34,6 +39,8 @@ import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.ObjectFormat;
 import org.dataone.service.types.v1.ObjectFormatIdentifier;
 import org.dataone.service.types.v1.SystemMetadata;
+import org.joda.time.DateTime;
+import org.joda.time.Period;
 
 import ch.hsr.geohash.GeoHash;
 
@@ -48,6 +55,9 @@ public class LogEntrySolrItem implements Serializable {
 	
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
 
+    @Field("counterCompliant")
+    Boolean counterCompliant;
+    
     @Field("id")
     String id;
 
@@ -139,6 +149,15 @@ public class LogEntrySolrItem implements Serializable {
     
     @Field("location")
     String location;
+    
+    @Field("repeatVisit")
+    Boolean repeatVisit;
+    
+    @Field("robotsLoose")
+    Boolean robotsLoose;
+    
+    @Field("robotsStrict")
+    Boolean robotsStrict;
 
     public LogEntrySolrItem() {
 
@@ -153,6 +172,10 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
+		this.setCounterCompliant(false);
+		this.setRobotsStrict(false);
+		this.setRobotsLoose(false);
+		this.setRepeatVisit(false);
     }
 
 	/*
@@ -250,6 +273,98 @@ public class LogEntrySolrItem implements Serializable {
 			}
 		}
 	}
+	
+	/*
+	 * Fill in the fields related to COUNTER compliance
+	 *
+	 * @param robotsStrict
+	 * @param robotsLoose
+	 * @param readEventCache
+	 * @param eventsToCheck
+	 * @param latestEventTime
+	 * @param REPEAT_VISIT_INTERVAL
+	 */
+	public void setCOUNTERfields(ArrayList<String> robotsLoose, ArrayList<String> robotsStrict,
+			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int REPEAT_VISIT_INTERVAL) {
+
+		String IPaddress = this.getIpAddress();
+		DateTime readEventTime = new DateTime(this.getDateLogged());
+	    DateTime intervalEndTime;
+	    Period repeatVisitIntervalSeconds = new Period().withSeconds(REPEAT_VISIT_INTERVAL);
+	    Pattern robotPattern;
+	    Matcher robotPatternMatcher;
+	    boolean robotMatches;
+		
+		// Set default values
+		this.setCounterCompliant(false);
+		this.setRobotsStrict(false);
+		this.setRobotsLoose(false);
+		this.setRepeatVisit(false);
+		
+		// Check if the event for this record is one that we are checking for COUNTER.
+		// If not, then return with default values.
+		if (! eventsToCheck.contains(this.event.trim().toLowerCase())) {
+			return;
+		}
+		
+		// Iterate over strict list of robots, comparing as regex to the user-agent of
+		// the current record.
+		for (String robotRegex : robotsStrict) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
+	        robotMatches = robotPatternMatcher.matches();
+	        if (robotMatches) {
+	        	this.setRobotsStrict(true);
+	        	break;
+	        }
+		}
+		
+		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
+		// the current record. This test is an additional test that is not part
+		// of the COUNTER compliance, so don't set the 'counterCompliant' field
+		// if this test fails.
+		for (String robotRegex : robotsLoose) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
+	        robotMatches = robotPatternMatcher.matches();
+	        if (robotMatches) {
+	        	this.setRobotsLoose(true);
+	        	break;
+	        }
+		}
+			
+		DateTime cachedEventTime;
+		// Check if this log record is a 'repeat visit', i.e. this is a read
+		// event from the same IP address as an earlier request happening
+		// within a specified time interval.
+		if (readEventCache.containsKey(IPaddress)) {
+			// A read event for this IP address was previously cached, so see if the current read event
+			// was within 30 seconds of the cached one.
+			cachedEventTime = readEventCache.get(IPaddress);
+			intervalEndTime = cachedEventTime.plus(repeatVisitIntervalSeconds);
+			if (readEventTime.isBefore(intervalEndTime) || readEventTime.isEqual(intervalEndTime)) {
+				this.setRepeatVisit(true);
+			} else {
+				// This event entry must be after the repeatEventInterval, so
+				// make it the new beginning of the repeatEventInterval for this IP address.
+				readEventCache.put(IPaddress, readEventTime);
+				this.setRepeatVisit(false);
+			}
+		} else {
+			// No entry for this IP, so create a new one
+			readEventCache.put(IPaddress, readEventTime);
+			this.setRepeatVisit(false);
+		}
+		
+		// Set COUNTER compliant flag based on all individual test
+		if (! this.getRepeatVisit() && ! this.getRobotsStrict()) {
+			this.setCounterCompliant(true);
+		} else {
+			this.setCounterCompliant(false);
+		}
+		
+		return;
+	}
     
     public String getCity() {
         return city;
@@ -258,6 +373,15 @@ public class LogEntrySolrItem implements Serializable {
     public void setCity(String city) {
         this.city = city;
     }
+    
+    public Boolean getCounterCompliant() {
+        return counterCompliant;
+    }
+
+    public void setCounterCompliant(Boolean compliant) {
+        this.counterCompliant = compliant;
+    }
+	
     public String getCountry() {
         return country;
     }
@@ -441,12 +565,36 @@ public class LogEntrySolrItem implements Serializable {
         this.region = region;
     }
     
+    public Boolean getRepeatVisit() {
+        return repeatVisit;
+    }
+
+    public void setRepeatVisit(Boolean repeatVisit) {
+        this.repeatVisit = repeatVisit;
+    }
+    
     public String getRightsHolder() {
         return rightsHolder;
     }
 
     public void setRightsHolder(String rightsHolder) {
         this.rightsHolder = rightsHolder;
+    }
+    
+    public Boolean getRobotsLoose() {
+        return robotsLoose;
+    }
+
+    public void setRobotsLoose(Boolean robotsLoose) {
+        this.robotsLoose = robotsLoose;
+    }
+    
+    public Boolean getRobotsStrict() {
+        return robotsStrict;
+    }
+
+    public void setRobotsStrict(Boolean robotsStrict) {
+        this.robotsStrict = robotsStrict;
     }
     
     public long getSize() {

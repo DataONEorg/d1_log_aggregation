@@ -25,6 +25,10 @@ package org.dataone.cn.batch.logging.tasks;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -42,7 +46,6 @@ import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.hazelcast.HazelcastClientInstance;
-//import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.configuration.Settings;
 import org.dataone.service.cn.impl.v1.NodeRegistryService;
@@ -110,7 +113,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
     /**
      * Implement the Callable interface,  retrieves logging information from a D1 Node
-     * and publishes a List<LogEntrySolrItem> to a hazelcast topic
+     * and publishes to indeLogEntryQueue, a BlockingQueue of List<List<LogEntrySolrItem>. The initial version
+     * of Log Aggregation published to a Hazelcast topic queue, so the requests were distributed among
+     * CNs, which listened on this queue. In order to remove Hazelcast dependencies
+     * and move closer to a single master CN architecture, the current version publishes to the BlockingQueue,
+     * 
      * 
      * The logging information retrieved will not be for the current day, but for 
      * a previous time period
@@ -123,6 +130,21 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Starting");
         LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
+        // COUNTER compliance of Event Log records is explained in the DataONE UsageStats document:
+        //
+        //     https://purl.dataone.org/architecture-dev/design/UsageStatistics.html#counter-compliance
+        //
+        // Event log record types to check for counter compliance
+        HashSet<String> eventsToCheck = new HashSet<String>(Arrays.asList("read"));
+        // List of web robots according to COUNTER standard
+        ArrayList<String> robotsStrict = new ArrayList<String>();
+        // Less strict list of web robots than COUNTER standard
+        ArrayList<String> robotsLoose = new ArrayList<String>();
+        // Cache for the read events, indexed by IPaddress. This cache will grow as the log entries
+        // are processed, so it will be purged after it reaches a certain size.
+        HashMap<String, DateTime> readEventCache = new HashMap<String, DateTime>();
+        int readEventCacheMax = 5000;
+        
         try {
             Boolean tryAgain = false;
             Integer queryFailures = 0;
@@ -149,7 +171,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 // see http://mule1.dataone.org/ArchitectureDocs-current/apis/MN_APIs.html#MNCore.getLogRecords
                 endDateTime = endDateTime.withTime(0, 0, 0, 0);
             }
-
 
             IMap<Identifier, SystemMetadata> systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
 
@@ -201,7 +222,44 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 			} catch (Exception e) {
 				throw new ServiceFailure(e.getMessage(), "Unable to initialize the GeoIP service");
 			}
-
+			
+			// Get COUNTER compliance related parameters
+            String robotsStrictFilePath = Settings.getConfiguration().getString("LogAggregator.robotsStrictFilePath");
+            String robotsLooseFilePath = Settings.getConfiguration().getString("LogAggregator.robotsLooseFilePath");
+            final int repeatVisitIntervalSeconds = Settings.getConfiguration().getInt("LogAggregator.repeatVisitIntervalSeconds");
+            
+            // Read in the list of web robots needed for COUNTER compliance checking
+			String filePath = null;
+			try {
+	            BufferedReader inBuf;
+	            String inLine;
+				filePath = robotsStrictFilePath;
+				inBuf = new BufferedReader(new FileReader(filePath));
+				while ((inLine = inBuf.readLine()) != null) {
+					robotsStrict.add(inLine);
+				}
+				inBuf.close();
+				
+				filePath = robotsLooseFilePath;
+				inBuf = new BufferedReader(new FileReader(filePath));
+				while ((inLine = inBuf.readLine()) != null) {
+					robotsLoose.add(inLine);
+				}
+				inBuf.close();
+			} catch (FileNotFoundException ex) {
+				ex.printStackTrace();
+				logger.error("LogAggregatorTask-"
+						+ d1NodeReference.getValue() + " " + ex.getMessage()
+						+ String.format("Unable to open file '%s' which is needed for COUNTER compliance checking", filePath));
+				throw new ExecutionException(ex);
+			} catch (IOException ex) {
+				ex.printStackTrace();
+				logger.error("LogAggregatorTask-"
+						+ d1NodeReference.getValue() + " " + ex.getMessage()
+						+ String.format("Error reading file '%s' which is needed for COUNTER compliance checking", filePath));
+				throw new ExecutionException(ex);
+			}
+            
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 List<LogEntry> readQueue = new ArrayList<LogEntry>();
@@ -264,6 +322,21 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
             			solrItem.updateSysmetaFields(systemMetadata);
                     	solrItem.updateLocationFields(geoIPsvc);
+                    	solrItem.setCOUNTERfields(robotsLoose, robotsStrict, readEventCache, eventsToCheck, repeatVisitIntervalSeconds);
+                    	// The cache of read events, indexed by IP address, has grown past the max allowed size, so purge entries that are older
+                    	// than the repeatVisitIntervalSeconds minus the time from the latest event.
+                    	if (readEventCache.size() > readEventCacheMax) {
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache");
+                            Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
+                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds);
+                            while(iterator.hasNext()){
+                                Map.Entry<String, DateTime> readEvent = iterator.next();                                
+                    			if (readEvent.getValue().isBefore(eventWindowStart)) {
+                                    iterator.remove();
+                    			}
+                            }
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Read Event Cache size after purge: " + readEventCache.size());
+                    	}
                     	
                         //Long integral = new Long(now.getTime());
                         //Long decimal = new Long(hzAtomicNumber.incrementAndGet());
