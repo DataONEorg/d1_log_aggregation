@@ -192,6 +192,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
 				//this.scheduleRecoveryJob();
             	logger.info("Current nodeId ' + localCnIdentifier + ' is the active CN, therefor MN event log harvest jobs will be submitted");
 				this.manageHarvest();
+            } else {
+            	logger.info("Current nodeId ' + localCnIdentifier + ' is not the active CN, therefor MN event log harvest jobs will not be submitted");
+            	logger.info("The current active CN is: " + activeCnIdentifier );
             }
 
             systemMetadataEntryListener.start();
