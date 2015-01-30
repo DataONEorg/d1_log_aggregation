@@ -99,8 +99,6 @@ public class LogAggregationHarvestJob implements Job {
                 if (hzLogAggregatorLockMap.get(lockName) == null) {
                     hzLogAggregatorLockMap.put(lockName, "1");
                 }
-
-
                 
                 nodeLocked = hzLogAggregatorLockMap.tryLock(lockName, 500L, TimeUnit.MILLISECONDS);
                 Future future = null;
@@ -111,17 +109,21 @@ public class LogAggregationHarvestJob implements Job {
                     NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
                     if ( nodeAccess.getAggregateLogs(nodeReference)) {
                         nodeAccess.setAggregateLogs(nodeReference, false);
-
-                        
                         LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference,indexLogEntryQueue);
+                        // Execute the harvest task on the current CN, to remove the dependency on Hazelcast
+                        // in this case, for distributed processing. This is a step toward implementing the
+                        // Single Master CN architecture (1 master CN, 1+ passive CNs). Unfortunately, this
+                        // means that the master CN has to process/index all event records.
+                        AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
+                        future = executor.submit(harvestTask);
                         // If the node reference is the local machine nodId, then
                         // do not submit to hazelcast for distribution
                         // Rather, execute it on the local machine
-                        if (nodeReference.getValue().equals(localCnIdentifier)) {
-                            // Execute on localhost
-                            AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
-                            future = executor.submit(harvestTask);
-                        }
+//                        if (nodeReference.getValue().equals(localCnIdentifier)) {
+//                            // Execute on localhost
+//                            AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
+//                            future = executor.submit(harvestTask);
+//                        }
 //                        } else {
 //                            // Distribute the task to any hazelcast process cluster instance
 //                            DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
