@@ -46,7 +46,7 @@ public class LogAccessRestriction {
                 String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
                 subjectsAllowedRead.add(standardizedName);
             } catch (IllegalArgumentException ex) {
-                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " Found improperly formatted rights holder subject: " + rightsHolder.getValue() + "\n" + ex.getMessage());
+                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + rightsHolder.getValue() + " that does not conform to RFC2253 conventions\n" + ex.getMessage());
                 subjectsAllowedRead.add(rightsHolder.getValue());
             }
         }

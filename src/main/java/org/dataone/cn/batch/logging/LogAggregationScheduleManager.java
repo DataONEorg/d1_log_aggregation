@@ -18,6 +18,7 @@
 package org.dataone.cn.batch.logging;
 
 import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
+import org.dataone.cn.batch.logging.listener.LogEntryTopicListener;
 import org.dataone.cn.ldap.ProcessingState;
 import org.dataone.cn.ldap.NodeAccess;
 import org.quartz.JobDataMap;
@@ -31,46 +32,40 @@ import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.dataone.service.util.DateTimeMarshaller;
-
 import java.util.Map;
-
 import org.dataone.service.exceptions.ServiceFailure;
 import org.quartz.SimpleScheduleBuilder;
 import org.dataone.client.auth.CertificateManager;
 import org.dataone.configuration.Settings;
-
 import java.util.Date;
 import java.io.File;
-
+import com.hazelcast.partition.Partition;
 import com.hazelcast.partition.PartitionService;
-
+import com.hazelcast.core.Hazelcast;
 import java.util.List;
-
+import java.util.ArrayList;
+import com.hazelcast.partition.MigrationEvent;
+import com.hazelcast.partition.MigrationListener;
 import com.hazelcast.core.Member;
-
 import org.dataone.service.types.v1.NodeReference;
+import com.hazelcast.core.EntryEvent;
+import com.hazelcast.core.EntryListener;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.dataone.service.types.v1.NodeType;
 import org.dataone.service.types.v1.NodeState;
 import org.dataone.service.types.v1.Node;
 import org.quartz.impl.StdSchedulerFactory;
-
 import java.io.IOException;
 import java.util.Properties;
-
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.logging.Log;
-
 import com.hazelcast.core.IMap;
-
 import org.quartz.JobDetail;
 import org.dataone.cn.batch.logging.jobs.LogAggregationHarvestJob;
-
 import com.hazelcast.core.HazelcastInstance;
-
 import java.net.MalformedURLException;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-
 import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.dataone.cn.hazelcast.HazelcastLdapStore;
 import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
@@ -82,10 +77,8 @@ import org.quartz.impl.matchers.GroupMatcher;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-
 import static org.quartz.TriggerBuilder.*;
 import static org.quartz.SimpleScheduleBuilder.*;
-
 import org.joda.time.DateTime;
 import org.quartz.*;
 
@@ -100,7 +93,7 @@ import static org.quartz.JobBuilder.*;
  *
  * @author waltz
  */
-public class LogAggregationScheduleManager implements ApplicationContextAware {
+public class LogAggregationScheduleManager implements ApplicationContextAware, EntryListener<NodeReference, Node>, MigrationListener {
 
     private String clientCertificateLocation =
             Settings.getConfiguration().getString("D1Client.certificate.directory")
@@ -110,7 +103,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
     private static String recoveryGroupName = "LogAggregatorRecovery";
-    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
     
     private HazelcastInstance hazelcast;
     private HazelcastLdapStore hazelcastLdapStore;
@@ -118,17 +110,14 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     ApplicationContext applicationContext;
     PartitionService partitionService;
     Member localMember;
-    private SolrServer localhostSolrServer;  // Injected by Spring
-    //private LogEntryTopicListener logEntryTopicListener;
+    private SolrServer localhostSolrServer;
+    private LogEntryTopicListener logEntryTopicListener;
     private SystemMetadataEntryListener systemMetadataEntryListener;
-    
-    private static SimpleScheduleBuilder harvestSimpleTriggerSchedule = null;
-    // Recovery only runs once for each CN
-    private static SimpleScheduleBuilder recoverySimpleTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
+    private static SimpleScheduleBuilder simpleTriggerSchedule = null;
+    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule().withRepeatCount(0).withMisfireHandlingInstructionFireNow();
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     static final String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
-    private String activeCnIdentifier = Settings.getConfiguration().getString("cn.nodeId.active");
     // Amount of time to delay the start of all jobs at initialization
     // so that not all jobs start at once, they should be staggered
     static final int delayStartOffset = Settings.getConfiguration().getInt("LogAggregator.delayStartOffset.minutes", 10);
@@ -155,20 +144,19 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
                 ex.printStackTrace();
                 logger.error(ex.getMessage());
             } 
-            // log aggregation should ideally execute at least once per day per membernode
+            // log aggregregation should ideally execute at least once per day per membernode
             // Sets the Period of time between sequential job executions, 24 hrs is default
             int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period", 24);
             String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField", "default");
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
-            	harvestSimpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInSeconds(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
-            	harvestSimpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInMinutes(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
-            	harvestSimpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
+                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else {
                 simpleSchedule().withIntervalInHours(24).repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             }
-            
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
             partitionService = hazelcast.getPartitionService();
@@ -181,28 +169,28 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             StdSchedulerFactory schedulerFactory = new StdSchedulerFactory(properties);
             scheduler = schedulerFactory.getScheduler();
 
-            /*
-            * The active CN (in the single master CN configuration) is the only CN that will schedule harvest jobs and create new
-            * event log entries. Passive CN event indexes are synchronized and recovered currently via Apache SolrCloud */
-            if (activeCnIdentifier == null) {
-                // The property for the active CN was not set in node.properties, so we will assume that this is 
-                // a passive node.
-            	logger.warn("cn.nodeId.active property not set in node.properties, so it is assumed that this is a passive CN");
-            } else if (localCnIdentifier.compareToIgnoreCase(activeCnIdentifier) == 0) {
-				//this.scheduleRecoveryJob();
-            	logger.info("Current nodeId ' + localCnIdentifier + ' is the active CN, therefor MN event log harvest jobs will be submitted");
-				this.manageHarvest();
-            } else {
-            	logger.info("Current nodeId ' + localCnIdentifier + ' is not the active CN, therefor MN event log harvest jobs will not be submitted");
-            	logger.info("The current active CN is: " + activeCnIdentifier );
-            }
+            this.scheduleRecoveryJob();
 
+            // the LogEntryTopicListener should only be started after JobRecovery
+            // since we don't want any indexing jobs spawned by interactions with the
+            // LogEntry topic to corrupt the index
+            // before the most recent log entry is retrieved from the index
+
+            logEntryTopicListener.addListener();
             systemMetadataEntryListener.start();
-
+            this.manageHarvest();
+            partitionService.addMigrationListener(this);
+            IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
+            hzNodes.addEntryListener(this, true);
+        } catch (SolrServerException ex) {
+            ex.printStackTrace();
+            throw new IllegalStateException("SolrServer connection failed: " + ex.getMessage());
         } catch (IOException ex) {
             throw new IllegalStateException("Loading properties file failedUnable to initialize jobs for scheduling: " + ex.getMessage());
         } catch (SchedulerException ex) {
             throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
+        } catch (ServiceFailure ex) {
+            throw new IllegalStateException("NodeService failed: " + ex.getMessage());
         }
     }
 
@@ -247,12 +235,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         // Add the local CN to the jobs to be executed.
         try {
             if (!scheduler.checkExists(jobKey)) {
-                JobDataMap jobDataMap = new JobDataMap();
-                jobDataMap.put("NodeIdentifier", localCnIdentifier);
-                jobDataMap.put("indexLogEntryQueue", indexLogEntryQueue);
-                JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData(jobDataMap).build();
+                JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData("NodeIdentifier", localCnIdentifier).build();
                 TriggerKey triggerKey = new TriggerKey("trigger-" + localCnIdentifier, logGroupName);
-                Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(harvestSimpleTriggerSchedule).build();
+                Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(simpleTriggerSchedule).build();
                 logger.info("scheduling job-" + localCnIdentifier + " to start at " + zFmt.print(startTime));
                 scheduler.scheduleJob(job, trigger);
             } else {
@@ -264,6 +249,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
 
         logger.info("Node map has " + hzNodes.size() + " entries");
         // construct new jobs and triggers based on ownership of nodes in the nodeList
+
         for (NodeReference key : hzNodes.localKeySet()) {
             startTime = startTime.plusSeconds(90);
             Node node = hzNodes.get(key);
@@ -296,12 +282,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             JobKey jobKey = new JobKey("job-" + key.getValue(), logGroupName);
             try {
                 if (!scheduler.checkExists(jobKey)) {
-                    JobDataMap jobDataMap = new JobDataMap();
-                    jobDataMap.put("NodeIdentifier", key.getValue());
-                    jobDataMap.put("indexLogEntryQueue", indexLogEntryQueue);
-                    JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData(jobDataMap).build();
+                    JobDetail job = newJob(LogAggregationHarvestJob.class).withIdentity(jobKey).usingJobData("NodeIdentifier", key.getValue()).build();
                     TriggerKey triggerKey = new TriggerKey("trigger-" + key.getValue(), logGroupName);
-                    Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startDate).withSchedule(harvestSimpleTriggerSchedule).build();
+                    Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startDate).withSchedule(simpleTriggerSchedule).build();
                     logger.info("scheduling job-" + key.getValue() + " to start at " + zFmt.print(startDate.getTime()));
                     scheduler.scheduleJob(job, trigger);
                 } else {
@@ -312,6 +295,123 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             }
 
         }
+    }
+    /*
+     * monitor node additions
+     * 
+     * if a node is added to nodelist, this will be triggered
+     * does nothing now
+     * 
+     * @param EntryEvent<NodeReference, Node>
+     * 
+     */
+
+    @Override
+    public void entryAdded(EntryEvent<NodeReference, Node> event) {
+        logger.info("Node Entry added key=" + event.getKey().getValue());
+        /*
+         * try { Thread.sleep(2000L); } catch (InterruptedException ex) {
+         * Logger.getLogger(LogAggregationScheduleManager.class.getName()).log(Level.SEVERE, null, ex); }
+         *
+         * Partition partition = partitionService.getPartition(event.getKey()); Member ownerMember =
+         * partition.getOwner();
+         *
+         * if (localMember.equals(ownerMember)) { try { this.manageHarvest(); } catch (SchedulerException ex) { throw
+         * new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage()); } }
+         */
+    }
+    /*
+     * monitor node removals
+     * 
+     * if a node is removed from nodelist, this will be triggered
+     * does nothing now
+     * 
+     * @param EntryEvent<NodeReference, Node>
+     * 
+     */
+    @Override
+    public void entryRemoved(EntryEvent<NodeReference, Node> event) {
+        logger.error("Entry removed key=" + event.getKey().getValue());
+    }
+    
+    /*
+     * monitor node changes updates to hazelcast 
+     * 
+     * should only be noted if updateNodeCapabilities is called on the CN, or if
+     * the nodeApproval tool is run by administrator
+     * 
+     * may result in recalculation of Quartz job scheduling
+     * if any nodes are determined to be locally owned
+     * 
+     * @param EntryEvent<NodeReference, Node>
+     */
+
+    @Override
+    public void entryUpdated(EntryEvent<NodeReference, Node> event) {
+        logger.info("Node Entry updated key=" + event.getKey().getValue());
+
+        try {
+            Thread.sleep(2000L);
+        } catch (InterruptedException ex) {
+            Logger.getLogger(LogAggregationScheduleManager.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        Partition partition = partitionService.getPartition(event.getKey());
+        Member ownerMember = partition.getOwner();
+
+        if (localMember.equals(ownerMember)) {
+            if (localMember.equals(ownerMember)) {
+                try {
+                    this.manageHarvest();
+                } catch (SchedulerException ex) {
+                    throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
+                }
+            }
+        }
+    }
+
+    @Override
+    public void entryEvicted(EntryEvent<NodeReference, Node> event) {
+        logger.warn("Entry evicted key=" + event.getKey().getValue());
+    }
+
+    //
+    // http://code.google.com/p/hazelcast/source/browse/trunk/hazelcast/src/main/java/com/hazelcast/impl/TestUtil.java?r=1824
+    // http://groups.google.com/group/hazelcast/browse_thread/thread/3856d5829e26f81c?fwc=1
+    //
+    /*
+     * if a migration has occurred between CNs, then we need to figure out if nodes have changed their home machine only
+     * the nodes 'owned' by a local machine should be scheduled by that machine
+     *
+     */
+    public void migrationCompleted(MigrationEvent migrationEvent) {
+        logger.debug("migrationCompleted " + migrationEvent.getPartitionId());
+        // this is the partition that was moved from 
+        // one node to the other
+        // try to determine if a Node has migrated home servers
+        if (localMember.equals(migrationEvent.getNewOwner()) || localMember.equals(migrationEvent.getOldOwner())) {
+            Integer partitionId = migrationEvent.getPartitionId();
+            PartitionService partitionService = hazelcast.getPartitionService();
+
+            IMap<NodeReference, Node> hzNodes = hazelcast.getMap(hzNodesName);
+
+            List<Integer> nodePartitions = new ArrayList<Integer>();
+            for (NodeReference key : hzNodes.keySet()) {
+                nodePartitions.add(partitionService.getPartition(key).getPartitionId());
+            }
+
+            if (nodePartitions.contains(partitionId)) {
+                logger.info("Node Partions migrated ");
+                try {
+                    this.manageHarvest();
+                } catch (SchedulerException ex) {
+                    throw new IllegalStateException("Unable to initialize jobs for scheduling: " + ex.getMessage());
+                }
+            }
+        }
+    }
+
+    public void migrationStarted(MigrationEvent migrationEvent) {
+        logger.debug("migrationStarted " + migrationEvent.getPartitionId());
     }
 
     /*
@@ -324,8 +424,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
      *
      * If log aggregation has run on this CN and on other CNs, then try to recover all records from where this machines
      * log entries end
-     * 
-     * Recovery only runs once when the active CN starts.
      *
      */
     public void scheduleRecoveryJob() throws SolrServerException, ServiceFailure, MalformedURLException {
@@ -344,6 +442,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         }
         if (recoveryMap != null && !recoveryMap.isEmpty()) {
             // first look at our own state (have we ever run before???)
+
             Map<String, String> localhostMap = recoveryMap.get(localNodeReference);
             if (localhostMap != null && !localhostMap.isEmpty()) {
                 // Get the date of the last log Aggregation
@@ -366,7 +465,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
                         CommonsHttpClientProtocolRegistry.createInstance();
                     } catch (Exception ex) {
                         ex.printStackTrace();
-                    }
+                    } 
                     //
                     // must use https connection because the select filter will require the cn node
                     // subject in order to correctly configure the parameters
@@ -421,7 +520,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             logger.debug("Scheduling Recovery with query " + recoveryQuery);
             // XXX set the status of this CN to recovery
             nodeAccess.setProcessingState(localNodeReference, ProcessingState.Recovery);
-            // setup quartz scheduling
+            // setup quarz scheduling
             DateTime startTime = new DateTime();
             // provide an offset to ensure the listener is up and running
             // it would be bad to recover before the listener is recording
@@ -442,13 +541,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
              * standard Java types should be very safe, but beyond that, any time someone changes the definition of a
              * class for which you have serialized instances, care has to be taken not to break compatibility.
              *
-             * on the other hand, placing them in the JobStore makes unit testing of LogAggregationRecoverJob easier.
+             * on the other hand, placeing them in the JobStore makes unit testing of LogAggregationRecoverJob easier.
              *
              */
             JobKey jobKey = new JobKey("recovery-job" + localCnIdentifier, recoveryGroupName);
             TriggerKey triggerKey = new TriggerKey("recovery-trigger" + localCnIdentifier, recoveryGroupName);
             JobDetail job = newJob(LogAggregationRecoverJob.class).withIdentity(jobKey).usingJobData(jobDataMap).build();
-            Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(recoverySimpleTriggerSchedule).build();
+            Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate()).withSchedule(recoveryTriggerSchedule).build();
             try {
                 scheduler.scheduleJob(job, trigger);
             } catch (SchedulerException ex) {
@@ -458,14 +557,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             logger.debug("Processing is now Active");
             nodeAccess.setProcessingState(localNodeReference, ProcessingState.Active);
         }
-    }
-    
-    public BlockingQueue<List<LogEntrySolrItem>> getIndexLogEntryQueue() {
-        return indexLogEntryQueue;
-    }
-
-    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
-        this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
     public HazelcastInstance getHazelcast() {
@@ -501,9 +592,16 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         return localhostSolrServer;
     }
 
-    // Injected by Spring
     public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
         this.localhostSolrServer = localhostSolrServer;
+    }
+
+    public LogEntryTopicListener getLogEntryTopicListener() {
+        return logEntryTopicListener;
+    }
+
+    public void setLogEntryTopicListener(LogEntryTopicListener logEntryTopicListener) {
+        this.logEntryTopicListener = logEntryTopicListener;
     }
 
     public SystemMetadataEntryListener getSystemMetadataEntryListener() {
@@ -512,5 +610,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
 
     public void setSystemMetadataEntryListener(SystemMetadataEntryListener systemMetadataEntryListener) {
         this.systemMetadataEntryListener = systemMetadataEntryListener;
+    }
+
+    @Override
+    public void migrationFailed(MigrationEvent migrationEvent) {
+        logger.warn("migrationFailed " + migrationEvent.getPartitionId());
     }
 }

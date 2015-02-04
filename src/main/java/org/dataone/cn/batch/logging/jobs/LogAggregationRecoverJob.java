@@ -236,7 +236,7 @@ public class LogAggregationRecoverJob implements Job {
                 }
 
                 do {
-                    // read up to a 1000 objects (the default, but it can be overwritten)
+                    // read upto a 1000 objects (the default, but it can be overwritten)
                     // from Log and process before retrieving more
                     // find out what the last log record is to get the date from it for recovery purposes
                     SolrQuery queryParams = new SolrQuery();
@@ -249,7 +249,6 @@ public class LogAggregationRecoverJob implements Job {
 
                     logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
                     if (!logEntryList.isEmpty()) {
-                    	// Add entry to the local CNs Solr index
                         localhostSolrServer.addBeans(logEntryList);
                         localhostSolrServer.commit();
                         if (assignDate) {

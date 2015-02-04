@@ -149,7 +149,7 @@ public class LogEntrySolrItem implements Serializable {
     
     @Field("location")
     String location;
-    
+
     @Field("repeatVisit")
     Boolean repeatVisit;
     
@@ -273,7 +273,7 @@ public class LogEntrySolrItem implements Serializable {
 			}
 		}
 	}
-	
+    
 	/*
 	 * Fill in the fields related to COUNTER compliance
 	 *

@@ -72,17 +72,15 @@ public class LogEntryTopicListener implements MessageListener<List<LogEntrySolrI
     public void onMessage(Message<List<LogEntrySolrItem>> message) {
         boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
         if (activateJob) {
-        	
-        	logger.error("This Hazelcast listener has been deprecated and should not be used.");
-//            
-//            List<LogEntrySolrItem> logList = message.getMessageObject();
-//            try {
-//                indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
-//            } catch (InterruptedException ex) {
-//                for (LogEntrySolrItem e : logList) {
-//                    logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
-//                }
-//            }
+            
+            List<LogEntrySolrItem> logList = message.getMessageObject();
+            try {
+                indexLogEntryQueue.offer(logList, 30L, TimeUnit.SECONDS);
+            } catch (InterruptedException ex) {
+                for (LogEntrySolrItem e : logList) {
+                    logger.error("Unable to offer " + e.getNodeIdentifier() + ":" + e.getEntryId() + ":" + format.format(e.getDateLogged()) + ":" + e.getSubject() + ":" + e.getEvent() + "--" + ex.getMessage());
+                }
+            }
         }
     }
 }
