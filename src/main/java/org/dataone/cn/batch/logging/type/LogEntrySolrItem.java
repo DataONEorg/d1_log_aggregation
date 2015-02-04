@@ -54,9 +54,10 @@ import java.util.List;
 public class LogEntrySolrItem implements Serializable {
 	
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
-
-    @Field("counterCompliant")
-    Boolean counterCompliant;
+    
+    private final static String ROBOT_LEVEL_NONE = "none";
+    private final static String ROBOT_LEVEL_LOOSE = "loose";
+    private final static String ROBOT_LEVEL_STRICT = "strict";
     
     @Field("id")
     String id;
@@ -153,11 +154,8 @@ public class LogEntrySolrItem implements Serializable {
     @Field("repeatVisit")
     Boolean repeatVisit;
     
-    @Field("robotsLoose")
-    Boolean robotsLoose;
-    
-    @Field("robotsStrict")
-    Boolean robotsStrict;
+    @Field("robotLevel")
+    String robotLevel;
 
     public LogEntrySolrItem() {
 
@@ -172,9 +170,7 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-		this.setCounterCompliant(false);
-		this.setRobotsStrict(false);
-		this.setRobotsLoose(false);
+		this.setRobotLevel(ROBOT_LEVEL_NONE);
 		this.setRepeatVisit(false);
     }
 
@@ -277,34 +273,39 @@ public class LogEntrySolrItem implements Serializable {
 	/*
 	 * Fill in the fields related to COUNTER compliance
 	 *
-	 * @param robotsStrict
 	 * @param robotsLoose
+	 * @param robotsStrict
 	 * @param readEventCache
 	 * @param eventsToCheck
-	 * @param latestEventTime
-	 * @param REPEAT_VISIT_INTERVAL
+	 * @param repeatVisitIntervalSeconds
 	 */
 	public void setCOUNTERfields(ArrayList<String> robotsLoose, ArrayList<String> robotsStrict,
-			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int REPEAT_VISIT_INTERVAL) {
+			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds) {
 
 		String IPaddress = this.getIpAddress();
 		DateTime readEventTime = new DateTime(this.getDateLogged());
 	    DateTime intervalEndTime;
-	    Period repeatVisitIntervalSeconds = new Period().withSeconds(REPEAT_VISIT_INTERVAL);
+	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds);
 	    Pattern robotPattern;
 	    Matcher robotPatternMatcher;
 	    boolean robotMatches;
-		
-		// Set default values
-		this.setCounterCompliant(false);
-		this.setRobotsStrict(false);
-		this.setRobotsLoose(false);
-		this.setRepeatVisit(false);
 		
 		// Check if the event for this record is one that we are checking for COUNTER.
 		// If not, then return with default values.
 		if (! eventsToCheck.contains(this.event.trim().toLowerCase())) {
 			return;
+		}
+		
+		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
+		// the current record.
+		for (String robotRegex : robotsLoose) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
+	        robotMatches = robotPatternMatcher.matches();
+	        if (robotMatches) {
+	        	this.setRobotLevel(ROBOT_LEVEL_LOOSE);
+	        	break;
+	        }
 		}
 		
 		// Iterate over strict list of robots, comparing as regex to the user-agent of
@@ -314,21 +315,7 @@ public class LogEntrySolrItem implements Serializable {
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
-	        	this.setRobotsStrict(true);
-	        	break;
-	        }
-		}
-		
-		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
-		// the current record. This test is an additional test that is not part
-		// of the COUNTER compliance, so don't set the 'counterCompliant' field
-		// if this test fails.
-		for (String robotRegex : robotsLoose) {
-			robotPattern = Pattern.compile(robotRegex.trim());
-			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
-	        robotMatches = robotPatternMatcher.matches();
-	        if (robotMatches) {
-	        	this.setRobotsLoose(true);
+	        	this.setRobotLevel(ROBOT_LEVEL_STRICT);
 	        	break;
 	        }
 		}
@@ -341,7 +328,7 @@ public class LogEntrySolrItem implements Serializable {
 			// A read event for this IP address was previously cached, so see if the current read event
 			// was within 30 seconds of the cached one.
 			cachedEventTime = readEventCache.get(IPaddress);
-			intervalEndTime = cachedEventTime.plus(repeatVisitIntervalSeconds);
+			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
 			if (readEventTime.isBefore(intervalEndTime) || readEventTime.isEqual(intervalEndTime)) {
 				this.setRepeatVisit(true);
 			} else {
@@ -356,13 +343,6 @@ public class LogEntrySolrItem implements Serializable {
 			this.setRepeatVisit(false);
 		}
 		
-		// Set COUNTER compliant flag based on all individual test
-		if (! this.getRepeatVisit() && ! this.getRobotsStrict()) {
-			this.setCounterCompliant(true);
-		} else {
-			this.setCounterCompliant(false);
-		}
-		
 		return;
 	}
     
@@ -372,14 +352,6 @@ public class LogEntrySolrItem implements Serializable {
 
     public void setCity(String city) {
         this.city = city;
-    }
-    
-    public Boolean getCounterCompliant() {
-        return counterCompliant;
-    }
-
-    public void setCounterCompliant(Boolean compliant) {
-        this.counterCompliant = compliant;
     }
 	
     public String getCountry() {
@@ -581,20 +553,12 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
     
-    public Boolean getRobotsLoose() {
-        return robotsLoose;
+    public String getRobotLevel() {
+    	return this.robotLevel;
     }
 
-    public void setRobotsLoose(Boolean robotsLoose) {
-        this.robotsLoose = robotsLoose;
-    }
-    
-    public Boolean getRobotsStrict() {
-        return robotsStrict;
-    }
-
-    public void setRobotsStrict(Boolean robotsStrict) {
-        this.robotsStrict = robotsStrict;
+    public void setRobotLevel(String level) {
+        this.robotLevel = level;
     }
     
     public long getSize() {
