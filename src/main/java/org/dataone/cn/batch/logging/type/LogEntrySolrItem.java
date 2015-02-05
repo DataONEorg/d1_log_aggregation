@@ -23,6 +23,11 @@
 package org.dataone.cn.batch.logging.type;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
@@ -34,6 +39,8 @@ import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.ObjectFormat;
 import org.dataone.service.types.v1.ObjectFormatIdentifier;
 import org.dataone.service.types.v1.SystemMetadata;
+import org.joda.time.DateTime;
+import org.joda.time.Period;
 
 import ch.hsr.geohash.GeoHash;
 
@@ -47,7 +54,11 @@ import java.util.List;
 public class LogEntrySolrItem implements Serializable {
 	
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
-
+    
+    private final static String ROBOT_LEVEL_NONE = "none";
+    private final static String ROBOT_LEVEL_LOOSE = "loose";
+    private final static String ROBOT_LEVEL_STRICT = "strict";
+    
     @Field("id")
     String id;
 
@@ -140,6 +151,12 @@ public class LogEntrySolrItem implements Serializable {
     @Field("location")
     String location;
 
+    @Field("repeatVisit")
+    Boolean repeatVisit;
+    
+    @Field("robotLevel")
+    String robotLevel;
+
     public LogEntrySolrItem() {
 
     }
@@ -153,6 +170,8 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
+		this.setRobotLevel(ROBOT_LEVEL_NONE);
+		this.setRepeatVisit(false);
     }
 
 	/*
@@ -251,6 +270,82 @@ public class LogEntrySolrItem implements Serializable {
 		}
 	}
     
+	/*
+	 * Fill in the fields related to COUNTER compliance
+	 *
+	 * @param robotsLoose
+	 * @param robotsStrict
+	 * @param readEventCache
+	 * @param eventsToCheck
+	 * @param repeatVisitIntervalSeconds
+	 */
+	public void setCOUNTERfields(ArrayList<String> robotsLoose, ArrayList<String> robotsStrict,
+			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds) {
+
+		String IPaddress = this.getIpAddress();
+		DateTime readEventTime = new DateTime(this.getDateLogged());
+	    DateTime intervalEndTime;
+	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds);
+	    Pattern robotPattern;
+	    Matcher robotPatternMatcher;
+	    boolean robotMatches;
+		
+		// Check if the event for this record is one that we are checking for COUNTER.
+		// If not, then return with default values.
+		if (! eventsToCheck.contains(this.event.trim().toLowerCase())) {
+			return;
+		}
+		
+		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
+		// the current record.
+		for (String robotRegex : robotsLoose) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
+	        robotMatches = robotPatternMatcher.matches();
+	        if (robotMatches) {
+	        	this.setRobotLevel(ROBOT_LEVEL_LOOSE);
+	        	break;
+	        }
+		}
+		
+		// Iterate over strict list of robots, comparing as regex to the user-agent of
+		// the current record.
+		for (String robotRegex : robotsStrict) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
+	        robotMatches = robotPatternMatcher.matches();
+	        if (robotMatches) {
+	        	this.setRobotLevel(ROBOT_LEVEL_STRICT);
+	        	break;
+	        }
+		}
+			
+		DateTime cachedEventTime;
+		// Check if this log record is a 'repeat visit', i.e. this is a read
+		// event from the same IP address as an earlier request happening
+		// within a specified time interval.
+		if (readEventCache.containsKey(IPaddress)) {
+			// A read event for this IP address was previously cached, so see if the current read event
+			// was within 30 seconds of the cached one.
+			cachedEventTime = readEventCache.get(IPaddress);
+			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
+			if (readEventTime.isBefore(intervalEndTime) || readEventTime.isEqual(intervalEndTime)) {
+				this.setRepeatVisit(true);
+			} else {
+				// This event entry must be after the repeatEventInterval, so
+				// make it the new beginning of the repeatEventInterval for this IP address.
+				readEventCache.put(IPaddress, readEventTime);
+				this.setRepeatVisit(false);
+			}
+		} else {
+			// No entry for this IP, so create a new one
+			readEventCache.put(IPaddress, readEventTime);
+			this.setRepeatVisit(false);
+		}
+		
+		return;
+	}
+    
     public String getCity() {
         return city;
     }
@@ -258,6 +353,7 @@ public class LogEntrySolrItem implements Serializable {
     public void setCity(String city) {
         this.city = city;
     }
+	
     public String getCountry() {
         return country;
     }
@@ -441,12 +537,28 @@ public class LogEntrySolrItem implements Serializable {
         this.region = region;
     }
     
+    public Boolean getRepeatVisit() {
+        return repeatVisit;
+    }
+
+    public void setRepeatVisit(Boolean repeatVisit) {
+        this.repeatVisit = repeatVisit;
+    }
+    
     public String getRightsHolder() {
         return rightsHolder;
     }
 
     public void setRightsHolder(String rightsHolder) {
         this.rightsHolder = rightsHolder;
+    }
+    
+    public String getRobotLevel() {
+    	return this.robotLevel;
+    }
+
+    public void setRobotLevel(String level) {
+        this.robotLevel = level;
     }
     
     public long getSize() {
