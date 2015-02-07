@@ -55,9 +55,10 @@ public class LogEntrySolrItem implements Serializable {
 	
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
     
-    private final static String ROBOT_LEVEL_NONE = "none";
-    private final static String ROBOT_LEVEL_LOOSE = "loose";
-    private final static String ROBOT_LEVEL_STRICT = "strict";
+    private final static String PASSED_ROBOT_TESTS_NONE = "none";
+    private final static String PASSED_ROBOT_TESTS_ALL = "all";
+    private final static String PASSED_ROBOT_TEST_LOOSE_ONLY = "looseOnly";
+    private final static String PASSED_ROBOT_TEST_STRICT_ONLY = "strictOnly";
     
     @Field("id")
     String id;
@@ -154,8 +155,8 @@ public class LogEntrySolrItem implements Serializable {
     @Field("repeatVisit")
     Boolean repeatVisit;
     
-    @Field("robotLevel")
-    String robotLevel;
+    @Field("robotChecks")
+    String robotChecks;
 
     public LogEntrySolrItem() {
 
@@ -170,7 +171,7 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-		this.setRobotLevel(ROBOT_LEVEL_NONE);
+		this.setRobotChecks(PASSED_ROBOT_TESTS_NONE);
 		this.setRepeatVisit(false);
     }
 
@@ -296,6 +297,9 @@ public class LogEntrySolrItem implements Serializable {
 			return;
 		}
 		
+		Boolean passedRobotTestStrict = true;
+		Boolean passedRobotTestLoose = true;
+		
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
 		// the current record.
 		for (String robotRegex : robotsLoose) {
@@ -303,7 +307,7 @@ public class LogEntrySolrItem implements Serializable {
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
-	        	this.setRobotLevel(ROBOT_LEVEL_LOOSE);
+	        	passedRobotTestLoose = false;
 	        	break;
 	        }
 		}
@@ -315,9 +319,29 @@ public class LogEntrySolrItem implements Serializable {
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
-	        	this.setRobotLevel(ROBOT_LEVEL_STRICT);
+	        	passedRobotTestStrict = false;
 	        	break;
 	        }
+		}
+		
+		// Set the 'robotChecks' based on the tests that have passed. The following chart shows
+		// sample user-agents, the corresponding test results and the resulting index field value.
+		//
+		// user-agent     passes 'loose' test     passes 'strict' test     resulting 'robotChecks' field
+		// ----------     --------------------    ---------------------    ----------------------------
+        // Mozilla        y                       y                        all
+		// google         n                       n                        none
+		// java           y                       n                        looseOnly
+		// ???            n                       y                        strictOnly
+		
+		if (passedRobotTestLoose && passedRobotTestStrict) {
+		    this.setRobotChecks(PASSED_ROBOT_TESTS_ALL);
+		} else if(!passedRobotTestLoose && !passedRobotTestStrict) {
+		    this.setRobotChecks(PASSED_ROBOT_TESTS_NONE);
+		} else if (passedRobotTestLoose && !passedRobotTestStrict) {
+		    this.setRobotChecks(PASSED_ROBOT_TEST_LOOSE_ONLY);
+		} else if (!passedRobotTestLoose && passedRobotTestStrict) {
+		    this.setRobotChecks(PASSED_ROBOT_TEST_STRICT_ONLY);
 		}
 			
 		DateTime cachedEventTime;
@@ -553,12 +577,12 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
     
-    public String getRobotLevel() {
-    	return this.robotLevel;
+    public String getRobotChecks() {
+    	return this.robotChecks;
     }
 
-    public void setRobotLevel(String level) {
-        this.robotLevel = level;
+    public void setRobotChecks(String checks) {
+        this.robotChecks = checks;
     }
     
     public long getSize() {
