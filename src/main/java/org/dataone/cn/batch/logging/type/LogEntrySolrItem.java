@@ -55,11 +55,6 @@ public class LogEntrySolrItem implements Serializable {
 	
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
     
-    private final static String PASSED_ROBOT_TESTS_NONE = "none";
-    private final static String PASSED_ROBOT_TESTS_ALL = "all";
-    private final static String PASSED_ROBOT_TEST_LOOSE_ONLY = "looseOnly";
-    private final static String PASSED_ROBOT_TEST_STRICT_ONLY = "strictOnly";
-    
     @Field("id")
     String id;
 
@@ -155,8 +150,11 @@ public class LogEntrySolrItem implements Serializable {
     @Field("repeatVisit")
     Boolean repeatVisit;
     
-    @Field("robotChecks")
-    String robotChecks;
+    @Field("robotsLoose")
+    boolean robotsLoose;
+    
+    @Field("robotsStrict")
+    boolean robotsStrict;
 
     public LogEntrySolrItem() {
 
@@ -171,7 +169,8 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-		this.setRobotChecks(PASSED_ROBOT_TESTS_NONE);
+		this.setRobotsLoose(false);
+		this.setRobotsStrict(false);
 		this.setRepeatVisit(false);
     }
 
@@ -266,7 +265,7 @@ public class LogEntrySolrItem implements Serializable {
 				this.setGeohash_9(geohash.substring(0, 9));
 			} catch (IllegalArgumentException iae) {
 				logger.error("Error calculating geohash for log record id "
-						+ this.getId() + ": " + iae.getMessage());
+						+ this.getPid() + ": " + iae.getMessage());
 			}
 		}
 	}
@@ -284,9 +283,11 @@ public class LogEntrySolrItem implements Serializable {
 			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds) {
 
 		String IPaddress = this.getIpAddress();
+		String docId = this.getPid();
 		DateTime readEventTime = new DateTime(this.getDateLogged());
 	    DateTime intervalEndTime;
-	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds);
+	    // JodaTime intervals are exclusive for the end of an interval, so add one second to the period
+	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds+1);
 	    Pattern robotPattern;
 	    Matcher robotPatternMatcher;
 	    boolean robotMatches;
@@ -297,9 +298,6 @@ public class LogEntrySolrItem implements Serializable {
 			return;
 		}
 		
-		Boolean passedRobotTestStrict = true;
-		Boolean passedRobotTestLoose = true;
-		
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
 		// the current record.
 		for (String robotRegex : robotsLoose) {
@@ -307,7 +305,7 @@ public class LogEntrySolrItem implements Serializable {
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
-	        	passedRobotTestLoose = false;
+	        	setRobotsLoose(true);
 	        	break;
 	        }
 		}
@@ -319,51 +317,34 @@ public class LogEntrySolrItem implements Serializable {
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
-	        	passedRobotTestStrict = false;
+	        	setRobotsStrict(true);
 	        	break;
 	        }
-		}
-		
-		// Set the 'robotChecks' based on the tests that have passed. The following chart shows
-		// sample user-agents, the corresponding test results and the resulting index field value.
-		//
-		// user-agent     passes 'loose' test     passes 'strict' test     resulting 'robotChecks' field
-		// ----------     --------------------    ---------------------    ----------------------------
-        // Mozilla        y                       y                        all
-		// google         n                       n                        none
-		// java           y                       n                        looseOnly
-		// ???            n                       y                        strictOnly
-		
-		if (passedRobotTestLoose && passedRobotTestStrict) {
-		    this.setRobotChecks(PASSED_ROBOT_TESTS_ALL);
-		} else if(!passedRobotTestLoose && !passedRobotTestStrict) {
-		    this.setRobotChecks(PASSED_ROBOT_TESTS_NONE);
-		} else if (passedRobotTestLoose && !passedRobotTestStrict) {
-		    this.setRobotChecks(PASSED_ROBOT_TEST_LOOSE_ONLY);
-		} else if (!passedRobotTestLoose && passedRobotTestStrict) {
-		    this.setRobotChecks(PASSED_ROBOT_TEST_STRICT_ONLY);
 		}
 			
 		DateTime cachedEventTime;
 		// Check if this log record is a 'repeat visit', i.e. this is a read
-		// event from the same IP address as an earlier request happening
-		// within a specified time interval.
-		if (readEventCache.containsKey(IPaddress)) {
-			// A read event for this IP address was previously cached, so see if the current read event
+		// event from the same IP address, for the same docid as an earlier request happening
+		// within a specified time interval. 
+		// Note: The event records returned from the DataONE member node are ordered by 'entryId',
+		// thus they are also ordered by date/time, so it is true that events are processed in order, by date.
+		String eventKey = IPaddress + docId;
+		if (readEventCache.containsKey(eventKey)) {
+			// A read event for this IP address + docId was previously cached, so see if the current read event
 			// was within 30 seconds of the cached one.
-			cachedEventTime = readEventCache.get(IPaddress);
+			cachedEventTime = readEventCache.get(eventKey);
 			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
-			if (readEventTime.isBefore(intervalEndTime) || readEventTime.isEqual(intervalEndTime)) {
+			if (readEventTime.isAfter(cachedEventTime) && readEventTime.isBefore(intervalEndTime)) {
 				this.setRepeatVisit(true);
 			} else {
 				// This event entry must be after the repeatEventInterval, so
 				// make it the new beginning of the repeatEventInterval for this IP address.
-				readEventCache.put(IPaddress, readEventTime);
+				readEventCache.put(eventKey, readEventTime);
 				this.setRepeatVisit(false);
 			}
 		} else {
 			// No entry for this IP, so create a new one
-			readEventCache.put(IPaddress, readEventTime);
+			readEventCache.put(eventKey, readEventTime);
 			this.setRepeatVisit(false);
 		}
 		
@@ -577,12 +558,20 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
     
-    public String getRobotChecks() {
-    	return this.robotChecks;
+    public boolean getRobotsLoose() {
+    	return this.robotsLoose;
     }
 
-    public void setRobotChecks(String checks) {
-        this.robotChecks = checks;
+    public void setRobotsLoose(boolean userAgentIsRobot) {
+        this.robotsLoose = userAgentIsRobot;
+    }
+    
+    public boolean getRobotsStrict() {
+    	return this.robotsStrict;
+    }
+
+    public void setRobotsStrict(boolean userAgentIsRobot) {
+        this.robotsStrict = userAgentIsRobot;
     }
     
     public long getSize() {

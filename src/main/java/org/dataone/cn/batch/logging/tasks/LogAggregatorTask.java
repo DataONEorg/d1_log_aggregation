@@ -319,7 +319,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     	if (readEventCache.size() > readEventCacheMax) {
                             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache");
                             Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
-                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds);
+                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds+1);
                             while(iterator.hasNext()){
                                 Map.Entry<String, DateTime> readEvent = iterator.next();                                
                     			if (readEvent.getValue().isBefore(eventWindowStart)) {
