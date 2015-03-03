@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d1:logEntry xmlns:d1="http://ns.dataone.org/service/types/v2.0">
+    <entryId>12345</entryId>
+    <identifier>this</identifier>
+    <ipAddress>128.111.84.40</ipAddress>
+    <userAgent>SomeAgent</userAgent>
+    <subject>me</subject>
+    <event>create</event>
+    <dateLogged>2006-05-04T18:13:51.0Z</dateLogged>
+    <nodeIdentifier>l0m1</nodeIdentifier>
+</d1:logEntry>
