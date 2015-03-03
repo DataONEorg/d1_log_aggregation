@@ -35,7 +35,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
-import org.dataone.service.types.v1.LogEntry;
+import org.dataone.service.types.v2.LogEntry;
 import org.dataone.service.util.TypeMarshaller;
 import org.jibx.runtime.JiBXException;
 import org.junit.AfterClass;

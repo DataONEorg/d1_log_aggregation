@@ -34,7 +34,7 @@
     </bean>
 
     <bean id="readSystemMetadataResource" class="org.springframework.core.io.ClassPathResource" >
-        <constructor-arg type="java.lang.String" value="org/dataone/cn/batch/logging/samples/v1/logEntry-valid.xml"/>
+        <constructor-arg type="java.lang.String" value="org/dataone/cn/batch/logging/samples/v2/logEntry-valid.xml"/>
     </bean>
 
     <bean id="indexLogEntryQueue" class="java.util.concurrent.ArrayBlockingQueue">

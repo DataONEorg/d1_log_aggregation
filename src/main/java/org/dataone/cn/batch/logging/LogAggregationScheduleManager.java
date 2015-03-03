@@ -19,8 +19,8 @@ package org.dataone.cn.batch.logging;
 
 import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
 import org.dataone.cn.batch.logging.listener.LogEntryTopicListener;
-import org.dataone.cn.ldap.ProcessingState;
 import org.dataone.cn.ldap.NodeAccess;
+import org.dataone.cn.ldap.ProcessingState;
 import org.quartz.JobDataMap;
 import org.dataone.cn.batch.logging.jobs.LogAggregationRecoverJob;
 import org.joda.time.DateTimeZone;
@@ -54,7 +54,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.dataone.service.types.v1.NodeType;
 import org.dataone.service.types.v1.NodeState;
-import org.dataone.service.types.v1.Node;
+import org.dataone.service.types.v2.Node;
 import org.quartz.impl.StdSchedulerFactory;
 import java.io.IOException;
 import java.util.Properties;
@@ -446,7 +446,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
             Map<String, String> localhostMap = recoveryMap.get(localNodeReference);
             if (localhostMap != null && !localhostMap.isEmpty()) {
                 // Get the date of the last log Aggregation
-                String localhostLogLastAggregated = localhostMap.get(NodeAccess.LogLastAggregatedAttribute);
+                String localhostLogLastAggregated = localhostMap.get(NodeAccess.LOG_LAST_AGGREGATED);
 
                 // at least it was initialized, let's see if it is set to a default value of 1900
                 // 1900 means it was initialized, but never ran
@@ -499,7 +499,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware, E
                 for (NodeReference cnReference : recoveryMap.keySet()) {
                     if (!cnReference.equals(localNodeReference)) {
                         Map<String, String> cnMap = recoveryMap.get(cnReference);
-                        String logLastAggregated = cnMap.get(NodeAccess.LogLastAggregatedAttribute);
+                        String logLastAggregated = cnMap.get(NodeAccess.LOG_LAST_AGGREGATED);
                         if ((logLastAggregated != null) && initializedDate.before(DateTimeMarshaller.deserializeDateToUTC(logLastAggregated))) {
                             // So it is true, a CN is running logAggregation
                             // this localhost has never run before, but another CN is running
