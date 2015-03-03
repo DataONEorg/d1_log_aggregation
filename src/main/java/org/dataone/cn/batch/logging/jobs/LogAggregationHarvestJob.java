@@ -42,7 +42,7 @@ import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
 import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
-import org.dataone.service.cn.impl.v1.NodeRegistryService;
+import org.dataone.service.cn.impl.v2.NodeRegistryService;
 import org.springframework.core.task.AsyncTaskExecutor;
 
 /**

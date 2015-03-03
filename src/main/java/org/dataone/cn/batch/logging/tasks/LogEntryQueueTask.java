@@ -17,28 +17,27 @@
  */
 package org.dataone.cn.batch.logging.tasks;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
-import java.util.Date;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
-import org.apache.log4j.Logger;
-import org.dataone.service.types.v1.LogEntry;
-import java.text.SimpleDateFormat;
-import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.AtomicNumber;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServer;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
+import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import com.hazelcast.core.HazelcastInstance;
 
 /**
  * Reads from the LogEvent tasks that need to be indexed.

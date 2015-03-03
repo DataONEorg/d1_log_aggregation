@@ -31,14 +31,14 @@ import java.util.regex.Pattern;
 
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
-import org.dataone.client.ObjectFormatCache;
+import org.dataone.client.v2.formats.ObjectFormatCache;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.service.exceptions.BaseException;
-import org.dataone.service.types.v1.LogEntry;
-import org.dataone.service.types.v1.ObjectFormat;
+import org.dataone.service.types.v2.LogEntry;
+import org.dataone.service.types.v2.ObjectFormat;
 import org.dataone.service.types.v1.ObjectFormatIdentifier;
-import org.dataone.service.types.v1.SystemMetadata;
+import org.dataone.service.types.v2.SystemMetadata;
 import org.joda.time.DateTime;
 import org.joda.time.Period;
 
@@ -167,7 +167,7 @@ public class LogEntrySolrItem implements Serializable {
         this.ipAddress = item.getIpAddress();
         this.userAgent = item.getUserAgent();
         this.subject = item.getSubject().getValue();
-        this.event = item.getEvent().xmlValue();
+        this.event = item.getEvent();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
 		this.setRobotLevel(ROBOT_LEVEL_NONE);

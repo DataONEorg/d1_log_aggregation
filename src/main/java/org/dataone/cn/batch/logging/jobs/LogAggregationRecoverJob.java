@@ -34,13 +34,14 @@ import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.dataone.client.CNode;
+import org.dataone.client.v2.itk.D1Client;
+import org.dataone.client.v2.CNode;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.cn.ldap.ProcessingState;
-import org.dataone.service.cn.impl.v1.NodeRegistryService;
+import org.dataone.service.cn.impl.v2.NodeRegistryService;
 
-import org.dataone.service.types.v1.Node;
+import org.dataone.service.types.v2.Node;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
 import org.joda.time.DateTime;
@@ -112,8 +113,8 @@ public class LogAggregationRecoverJob implements Job {
                             if ((cnMap != null) && !cnMap.isEmpty()) {
                                 Node d1Node = nodeRegistryService.getNode(cnReference);
                                 String baseUrl = d1Node.getBaseURL();
-                                logger.debug(localCnIdentifier +  " found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.ProcessingStateAttribute));
-                                ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.ProcessingStateAttribute));
+                                logger.debug(localCnIdentifier +  " found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.PROCESSING_STATE));
+                                ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.PROCESSING_STATE));
                                 switch (logProcessingState) {
                                     case Active: {
                                         // So it is true, a CN is running logAggregation
@@ -125,7 +126,7 @@ public class LogAggregationRecoverJob implements Job {
                                         // a machine may reportedly be active, but it actually offline becuase of a
                                         // system failure. Check to make certain that the system is really active
                                         // ping the damn thing to make certain it responds before we break!
-                                        CNode cnode = new CNode(baseUrl);
+                                        CNode cnode = D1Client.getCN(baseUrl);
                                         try {
                                             cnode.ping();
                                         } catch (Exception e) {
@@ -141,7 +142,7 @@ public class LogAggregationRecoverJob implements Job {
                                             // a machine may reportedly be active, but it is actually offline because of a
                                             // system failure. Check to make certain that the system is indeed online
                                             // ping it
-                                            CNode cnode = new CNode(baseUrl);
+                                            CNode cnode = D1Client.getCN(baseUrl);
                                             try {
                                                 cnode.ping();
                                                 String recoveringCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));

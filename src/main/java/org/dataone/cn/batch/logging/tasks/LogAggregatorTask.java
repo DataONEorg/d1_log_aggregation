@@ -22,25 +22,28 @@
 
 package org.dataone.cn.batch.logging.tasks;
 
-import com.hazelcast.core.AtomicNumber;
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.core.IMap;
-import com.hazelcast.core.ITopic;
-
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
-import java.util.*;
-import java.util.concurrent.BlockingQueue;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.EmptyStackException;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
-import org.dataone.client.MNode;
+import org.dataone.client.v2.MNode;
+import org.dataone.client.v2.itk.D1Client;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
@@ -51,7 +54,8 @@ import org.dataone.cn.hazelcast.HazelcastClientInstance;
 import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.configuration.Settings;
-import org.dataone.service.cn.impl.v1.NodeRegistryService;
+import org.dataone.service.cn.impl.v2.NodeRegistryService;
+import org.dataone.service.exceptions.BaseException;
 import org.dataone.service.exceptions.InvalidRequest;
 import org.dataone.service.exceptions.InvalidToken;
 import org.dataone.service.exceptions.NotAuthorized;
@@ -59,17 +63,20 @@ import org.dataone.service.exceptions.NotFound;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.Identifier;
-import org.dataone.service.types.v1.Log;
-import org.dataone.service.types.v1.LogEntry;
-import org.dataone.service.types.v1.Node;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.NodeType;
-import org.dataone.service.types.v1.Session;
-import org.dataone.service.types.v1.SystemMetadata;
+import org.dataone.service.types.v2.LogEntry;
+import org.dataone.service.types.v2.Node;
+import org.dataone.service.types.v2.SystemMetadata;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.MutableDateTime;
+
+import com.hazelcast.core.AtomicNumber;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
+import com.hazelcast.core.ITopic;
 
 /**
  * A distributable and executable task that retrieves a list of LogEntry
@@ -87,9 +94,7 @@ import org.joda.time.MutableDateTime;
 public class LogAggregatorTask implements Callable<Date>, Serializable {
 
     NodeReference d1NodeReference;
-    private Session session;
 
-    private Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size", 1000);
     private Integer queryTotalLimit = Settings.getConfiguration().getInt("LogAggregator.query_total_limit", 10000);
     private static final String geoIPdbName = Settings.getConfiguration().getString("LogAggregator.geoIPdbName");
     static final String hzLogEntryTopicName = Settings.getConfiguration().getString("dataone.hazelcast.logEntryTopic");
@@ -117,7 +122,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
      * @throws Exception
      */
     @Override
-    public Date call() throws ExecutionException {
+    public Date call() throws Exception {
         
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Starting");
@@ -201,7 +206,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             if (d1Node.getType().equals(NodeType.CN)) {
                 d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
             }
-            MNode mNode = new MNode(d1NodeBaseUrl);
+            MNode mNode = D1Client.getMN(d1Node.getIdentifier());
+            NodeCommunication nodeComm = NodeCommunication.getInstance(d1Node);
 
             // Create a service to determine location name from IP address that was obtained from a log entry
             String dbFilename = Settings.getConfiguration().getString(
@@ -260,11 +266,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 // read upto a 1000 objects (the default, but it can be overwritten)
                 // from ListObjects and process before retrieving more
                 try {
-                    readQueue = this.retrieve(mNode);
+                    readQueue = nodeComm.retrieve(d1Node.getIdentifier(), logQueryStack, queryTotalLimit);
                     queryFailures = 0;
                 } catch (QueryLimitException e) {
                     tryAgain = true;
-                } catch (ServiceFailure e) {
+                } catch (BaseException e) {
                     if (queryFailures < 5) {
                         try {
                             Thread.sleep(60000L);
@@ -405,122 +411,5 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
             throw new ExecutionException(ex);
         }
-    }
-
-    /*
-     * performs the retrieval of the log records  from a DataONE node.
-     * It retrieves the list in batches and should be called iteratively
-     * until all log entries have been retrieved from a node.
-     * 
-     * @return List<LogEntry>
-     */
-    private List<LogEntry> retrieve(MNode mNode) throws NotAuthorized, InvalidRequest, NotImplemented, ServiceFailure, InvalidToken, QueryLimitException, EmptyStackException {
-        // logger is not  be serializable, but no need to make it transient imo
-        Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
-        List<LogEntry> writeQueue = new ArrayList<LogEntry>();
-        try {
-            LogQueryDateRange logQueryDateRange = logQueryStack.pop();
-
-            
-            int start = 0;
-            int total = 0;
-            Log logList = null;
-
-            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval from " + start);
-            do {
-               boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
-                if (!activateJob) {
-                    logQueryStack.empty();
-                    logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
-                    throw new EmptyStackException();
-                }
-                // always execute for the first run (for start = 0)
-                // otherwise skip because when the start is equal or greater
-                // then total, then all objects have been harvested
-                // based on information from metacat devs, first querying with
-                // rows 0 will return quickly due to the
-                // shortcut of not needing to perform paging
-                if (start == 0) {
-                    try {
-                        logList = mNode.getLogRecords(logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
-                    } catch (NotAuthorized e) {
-                        logQueryStack.push(logQueryDateRange);
-                        throw e;
-                    } catch (InvalidRequest e) {
-                        logQueryStack.push(logQueryDateRange);
-                        throw e;
-                    } catch (NotImplemented e) {
-                        logQueryStack.push(logQueryDateRange);
-                        throw e;
-                    } catch (ServiceFailure e) {
-                        logQueryStack.push(logQueryDateRange);
-                        throw e;
-                    } catch (InvalidToken e) {
-                        logQueryStack.push(logQueryDateRange);
-                        throw e;
-                    }
-                    // if objectList is null or the count is 0 or the list is empty, then
-                    // there is nothing to process
-                    if (logList != null) {
-                        // if the total records returned from the above query is greater than the
-                        // limit we have placed on batch processing, then find the median date
-                        // and try again.
-                        // or if the date range of the query is less that one second, return the results as found
-                        // even if they extend beyon the batch processing limit
-                        if ((logList.getTotal() > queryTotalLimit)
-                                && (logQueryDateRange.getToDate().getTime() - logQueryDateRange.getFromDate().getTime()) > 1000L) {
-                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " discard pop start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
-                            long medianTime = (logQueryDateRange.getFromDate().getTime() + logQueryDateRange.getToDate().getTime()) / 2;
-
-                            LogQueryDateRange lateRecordDate = new LogQueryDateRange(new Date(medianTime), logQueryDateRange.getToDate());
-                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() +" late push start " + format.format(lateRecordDate.getFromDate()) + " end " + format.format(lateRecordDate.getToDate()));
-                            logQueryStack.push(lateRecordDate);
-
-                            LogQueryDateRange earlyRecordDate = new LogQueryDateRange(logQueryDateRange.getFromDate(), new Date(medianTime));
-                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "early push start " + format.format(earlyRecordDate.getFromDate()) + " end " + format.format(earlyRecordDate.getToDate()));
-                            logQueryStack.push(earlyRecordDate);
-                            throw new QueryLimitException();
-                        }
-                    }
-                }
-                
-                try {
-                    logList = mNode.getLogRecords(session, logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, start, batchSize);
-                } catch (NotAuthorized e) {
-                    logQueryStack.push(logQueryDateRange);
-                    throw e;
-                } catch (InvalidRequest e) {
-                    logQueryStack.push(logQueryDateRange);
-                    throw e;
-                } catch (NotImplemented e) {
-                    logQueryStack.push(logQueryDateRange);
-                    throw e;
-                } catch (ServiceFailure e) {
-                    logQueryStack.push(logQueryDateRange);
-                    throw e;
-                } catch (InvalidToken e) {
-                    logQueryStack.push(logQueryDateRange);
-                    throw e;
-                }
-                // if objectList is null or the count is 0 or the list is empty, then
-                // there is nothing to process
-
-
-                if ((logList != null)
-                        && (logList.getCount() > 0)
-                        && (logList.getLogEntryList() != null)
-                        && (!logList.getLogEntryList().isEmpty())) {
-                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " harvested start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
-                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " log harvested start#=" + logList.getStart() + " count=" + logList.getCount() + " total=" + logList.getTotal());
-                    start += logList.getCount();
-                    writeQueue.addAll(logList.getLogEntryList());
-                    total = logList.getTotal();
-                }
-                
-            } while ((logList != null) && (logList.getCount() > 0) && (start < total));
-        } catch (EmptyStackException ex) {
-            throw ex;
-        }
-        return writeQueue;
     }
 }

@@ -6,14 +6,9 @@ package org.dataone.cn.batch.logging;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.dataone.client.MNode;
-import org.dataone.client.auth.CertificateManager;
-import org.dataone.cn.hazelcast.HazelcastClientInstance;
-import org.dataone.service.cn.impl.v1.NodeRegistryService;
-import org.dataone.service.exceptions.NotFound;
+
+import org.dataone.service.cn.impl.v2.NodeRegistryService;
 import org.dataone.service.exceptions.ServiceFailure;
-import org.dataone.service.types.v1.Node;
-import org.dataone.service.types.v1.NodeReference;
 
 /**
  * 
