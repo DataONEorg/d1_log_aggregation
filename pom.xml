@@ -14,7 +14,6 @@
         <quartz.version>2.1.6</quartz.version>
         <solr.version>3.4.0</solr.version>
         <hazelcast.version>2.6.9</hazelcast.version>
-        <bouncycastle.version>1.46</bouncycastle.version>
         <d1_libclient_version>2.0.0-SNAPSHOT</d1_libclient_version>
         <d1_cn_noderegistry_version>2.0.0-SNAPSHOT</d1_cn_noderegistry_version>
     </properties>
@@ -217,18 +216,6 @@
             <groupId>org.jsslutils</groupId>
             <artifactId>jsslutils-extra-apachehttpclient3</artifactId>
             <version>1.0.7</version>
-        </dependency>
-        <dependency>
-            <groupId>org.bouncycastle</groupId>
-            <artifactId>bcprov-jdk15on</artifactId>
-            <version>${bouncycastle.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.bouncycastle</groupId>
-            <artifactId>bcmail-jdk15on</artifactId>
-            <version>${bouncycastle.version}</version>
-            <scope>provided</scope>
         </dependency>
 				<dependency>
 					<groupId>com.maxmind.geoip</groupId>
