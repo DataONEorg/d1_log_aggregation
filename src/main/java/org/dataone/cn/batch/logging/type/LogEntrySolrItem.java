@@ -301,7 +301,14 @@ public class LogEntrySolrItem implements Serializable {
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
 		// the current record.
 		for (String robotRegex : robotsLoose) {
-			robotPattern = Pattern.compile(robotRegex.trim());
+			//robotPattern = Pattern.compile(robotRegex.trim(), Pattern.CASE_INSENSITIVE);
+			// Add a wildcard to the end of the regex, as Java regex doesn't behave like
+			// grep, python, perl, i.e. the regex "Googlebot" doesn't match "Googlebot/2.1",
+			// but the regex "Googlebot.*+" does. Use the possesive qualifier '+' at the very end of the
+			// regex, as all userAgent regexes are specified from the beginning of the string, and
+			// so the backtracking associated with the greedy ".*" isn't required and increases
+			// search time.
+			robotPattern = Pattern.compile(robotRegex.trim() + ".*+");
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
@@ -313,7 +320,8 @@ public class LogEntrySolrItem implements Serializable {
 		// Iterate over strict list of robots, comparing as regex to the user-agent of
 		// the current record.
 		for (String robotRegex : robotsStrict) {
-			robotPattern = Pattern.compile(robotRegex.trim());
+			//robotPattern = Pattern.compile(robotRegex.trim(), Pattern.CASE_INSENSITIVE);
+			robotPattern = Pattern.compile(robotRegex.trim() + ".*+");
 			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
 	        robotMatches = robotPatternMatcher.matches();
 	        if (robotMatches) {
