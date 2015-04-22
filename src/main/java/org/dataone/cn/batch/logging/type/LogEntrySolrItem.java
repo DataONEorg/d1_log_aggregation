@@ -29,6 +29,8 @@ import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.net.util.SubnetUtils;
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.client.ObjectFormatCache;
@@ -147,14 +149,14 @@ public class LogEntrySolrItem implements Serializable {
     @Field("location")
     String location;
 
-    @Field("repeatVisit")
-    Boolean repeatVisit;
+    @Field("isRepeatVisit")
+    Boolean isRepeatVisit;
     
-    @Field("robotsLoose")
-    boolean robotsLoose;
+    @Field("inPartialRobotList")
+    boolean inPartialRobotList;
     
-    @Field("robotsStrict")
-    boolean robotsStrict;
+    @Field("inFullRobotList")
+    boolean inFullRobotList;
 
     public LogEntrySolrItem() {
 
@@ -169,9 +171,9 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-		this.setRobotsLoose(false);
-		this.setRobotsStrict(false);
-		this.setRepeatVisit(false);
+		this.setInPartialRobotList(false);
+		this.setInFullRobotList(false);
+		this.setIsRepeatVisit(false);
     }
 
 	/*
@@ -273,14 +275,15 @@ public class LogEntrySolrItem implements Serializable {
 	/*
 	 * Fill in the fields related to COUNTER compliance
 	 *
-	 * @param robotsLoose
-	 * @param robotsStrict
+	 * @param partialRobotList
+	 * @param fullRobotList
 	 * @param readEventCache
 	 * @param eventsToCheck
 	 * @param repeatVisitIntervalSeconds
 	 */
-	public void setCOUNTERfields(ArrayList<String> robotsLoose, ArrayList<String> robotsStrict,
-			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds) {
+	public void setCOUNTERfields(ArrayList<String> partialRobotList, ArrayList<String> fullRobotList,
+			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds, 
+			List<CSVRecord> webRobotIPs, Boolean doWebRobotIPcheck) {
 
 		String IPaddress = this.getIpAddress();
 		String docId = this.getPid();
@@ -289,8 +292,7 @@ public class LogEntrySolrItem implements Serializable {
 	    // JodaTime intervals are exclusive for the end of an interval, so add one second to the period
 	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds+1);
 	    Pattern robotPattern;
-	    Matcher robotPatternMatcher;
-	    boolean robotMatches;
+	    Matcher robotMatcher;
 		
 		// Check if the event for this record is one that we are checking for COUNTER.
 		// If not, then return with default values.
@@ -300,34 +302,69 @@ public class LogEntrySolrItem implements Serializable {
 		
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
 		// the current record.
-		for (String robotRegex : robotsLoose) {
-			//robotPattern = Pattern.compile(robotRegex.trim(), Pattern.CASE_INSENSITIVE);
-			// Add a wildcard to the end of the regex, as Java regex doesn't behave like
-			// grep, python, perl, i.e. the regex "Googlebot" doesn't match "Googlebot/2.1",
-			// but the regex "Googlebot.*+" does. Use the possesive qualifier '+' at the very end of the
-			// regex, as all userAgent regexes are specified from the beginning of the string, and
-			// so the backtracking associated with the greedy ".*" isn't required and increases
-			// search time.
-			robotPattern = Pattern.compile(robotRegex.trim() + ".*+");
-			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
-	        robotMatches = robotPatternMatcher.matches();
-	        if (robotMatches) {
-	        	setRobotsLoose(true);
+		for (String robotRegex : partialRobotList) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotMatcher = robotPattern.matcher(this.userAgent.trim());
+	        if (robotMatcher.find()) {
+	        	setInPartialRobotList(true);
+	        	//System.out.println("Found robot loose: " + this.userAgent.trim());
 	        	break;
 	        }
 		}
 		
-		// Iterate over strict list of robots, comparing as regex to the user-agent of
+		// Iterate over strict list of Robot, comparing as regex to the user-agent of
 		// the current record.
-		for (String robotRegex : robotsStrict) {
-			//robotPattern = Pattern.compile(robotRegex.trim(), Pattern.CASE_INSENSITIVE);
-			robotPattern = Pattern.compile(robotRegex.trim() + ".*+");
-			robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
-	        robotMatches = robotPatternMatcher.matches();
-	        if (robotMatches) {
-	        	setRobotsStrict(true);
+		for (String robotRegex : fullRobotList) {
+			robotPattern = Pattern.compile(robotRegex.trim());
+			robotMatcher = robotPattern.matcher(this.userAgent.trim());
+	        if (robotMatcher.find()) {
+	        	setInFullRobotList(true);
+	        	//System.out.println("Found robot strict: " + this.userAgent.trim());
 	        	break;
 	        }
+		}
+		
+		// If this log entry passed the web robot tests based on the user agent matching a known web robot user agent,
+		// then perform an additional test on known IP addresses for web Robot. If both strict and
+		// loose robot user agent tests failed (is robot) then there is no need to run this test, as
+		// we already know this is a robot!
+		if (doWebRobotIPcheck && !(this.getInPartialRobotList() && this.getInFullRobotList())) {
+			Boolean inRange;
+			SubnetUtils utils;
+			// Does this web robot IP specify a CIDR netmask, i.e. "192.168.0.15/24"
+			Pattern IPrangePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+");
+			Pattern IPsinglePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+");
+			Matcher IPrangeMatcher;
+			Matcher IPsingleMatcher;
+			for (CSVRecord webBot : webRobotIPs) {
+				String webBotIP = webBot.get(0).trim();
+				// Check if this IP is a CIDR, i.e. range of IP addresses. If
+				// yes, then we have to see if the IP of the read request is in the range
+				// of IP addresses specified in the CIDR address, i.e. is 192.168.0.1
+				// in the range 192.168.0.15/24
+				IPrangeMatcher = IPrangePattern.matcher(webBotIP);
+				IPsingleMatcher = IPsinglePattern.matcher(webBotIP);
+				inRange = false;
+				if (IPrangeMatcher.find()) {
+					utils = new SubnetUtils(webBotIP);
+					inRange = utils.getInfo().isInRange(this.ipAddress.trim());
+					if (inRange) {
+						//System.out.println("Found webot for IP: " + this.ipAddress + ", webBot IP range: " + webBotIP
+						//		+ ", webBot user agent string: " + webBot.get(1));
+						this.setInPartialRobotList(true);
+						this.setInFullRobotList(true);
+						break;
+					}
+				} else if (IPsingleMatcher.find()) {
+					if (webBotIP.trim().equals(this.ipAddress.trim())) {
+						//System.out.println("Found webot for IP: " + this.ipAddress + ", webBot IP range: " + webBotIP
+						//		+ ", webBot user agent string: " + webBot.get(1));
+						this.setInPartialRobotList(true);
+						this.setInFullRobotList(true);
+						break;
+					}
+				}
+			}
 		}
 			
 		DateTime cachedEventTime;
@@ -343,19 +380,19 @@ public class LogEntrySolrItem implements Serializable {
 			cachedEventTime = readEventCache.get(eventKey);
 			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
 			if (readEventTime.isAfter(cachedEventTime) && readEventTime.isBefore(intervalEndTime)) {
-				this.setRepeatVisit(true);
+				this.setIsRepeatVisit(true);
+				//System.out.println("Repeat visit for id: " + this.getPid() + ", IP: " + this.ipAddress + ", dateLogged: " + this.dateLogged);
 			} else {
 				// This event entry must be after the repeatEventInterval, so
 				// make it the new beginning of the repeatEventInterval for this IP address.
 				readEventCache.put(eventKey, readEventTime);
-				this.setRepeatVisit(false);
+				this.setIsRepeatVisit(false);
 			}
 		} else {
 			// No entry for this IP, so create a new one
 			readEventCache.put(eventKey, readEventTime);
-			this.setRepeatVisit(false);
+			this.setIsRepeatVisit(false);
 		}
-		
 		return;
 	}
     
@@ -550,12 +587,12 @@ public class LogEntrySolrItem implements Serializable {
         this.region = region;
     }
     
-    public Boolean getRepeatVisit() {
-        return repeatVisit;
+    public Boolean getIsRepeatVisit() {
+        return isRepeatVisit;
     }
 
-    public void setRepeatVisit(Boolean repeatVisit) {
-        this.repeatVisit = repeatVisit;
+    public void setIsRepeatVisit(Boolean isRepeatVisit) {
+        this.isRepeatVisit = isRepeatVisit;
     }
     
     public String getRightsHolder() {
@@ -566,20 +603,20 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
     
-    public boolean getRobotsLoose() {
-    	return this.robotsLoose;
+    public boolean getInPartialRobotList() {
+    	return this.inPartialRobotList;
     }
 
-    public void setRobotsLoose(boolean userAgentIsRobot) {
-        this.robotsLoose = userAgentIsRobot;
+    public void setInPartialRobotList(boolean isRobot) {
+        this.inPartialRobotList = isRobot;
     }
     
-    public boolean getRobotsStrict() {
-    	return this.robotsStrict;
+    public boolean getInFullRobotList() {
+    	return this.inFullRobotList;
     }
 
-    public void setRobotsStrict(boolean userAgentIsRobot) {
-        this.robotsStrict = userAgentIsRobot;
+    public void setInFullRobotList(boolean isRobot) {
+        this.inFullRobotList = isRobot;
     }
     
     public long getSize() {

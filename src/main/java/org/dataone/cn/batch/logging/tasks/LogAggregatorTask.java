@@ -39,6 +39,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.apache.log4j.Logger;
 import org.dataone.client.MNode;
 import org.dataone.cn.batch.logging.GeoIPService;
@@ -129,13 +132,18 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         // Event log record types to check for counter compliance
         HashSet<String> eventsToCheck = new HashSet<String>(Arrays.asList("read"));
         // List of web robots according to COUNTER standard
-        ArrayList<String> robotsStrict = new ArrayList<String>();
+        ArrayList<String> fullWebRobotList = new ArrayList<String>();
         // Less strict list of web robots than COUNTER standard
-        ArrayList<String> robotsLoose = new ArrayList<String>();
+        ArrayList<String> partialWebRobotList = new ArrayList<String>();
         // Cache for the read events, indexed by IPaddress. This cache will grow as the log entries
         // are processed, so it will be purged after it reaches a certain size.
         HashMap<String, DateTime> readEventCache = new HashMap<String, DateTime>();
-        int readEventCacheMax = 5000;
+        // Max number of entries in the read event cache
+        int readEventCacheMax = Settings.getConfiguration().getInt("LogAggregator.readEventCacheMax");
+        // Starting max number of entries in read event cache, can grow to readEventCacheMax
+        int readEventCacheCurrentMax = 1000;
+        Boolean doWebRobotIPcheck = Settings.getConfiguration().getBoolean("LogAggregator.doWebRobotIPcheck");
+        List<CSVRecord> webRobotIPs = new ArrayList<CSVRecord>();
         
         try {
             Boolean tryAgain = false;
@@ -217,26 +225,44 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 			}
 
 			// Get COUNTER compliance related parameters
-            String robotsStrictFilePath = Settings.getConfiguration().getString("LogAggregator.robotsStrictFilePath");
-            String robotsLooseFilePath = Settings.getConfiguration().getString("LogAggregator.robotsLooseFilePath");
+            String fullWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.fullWebRobotListFilePath");
+            String partialWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.partialWebRobotListFilePath");
             final int repeatVisitIntervalSeconds = Settings.getConfiguration().getInt("LogAggregator.repeatVisitIntervalSeconds");
+            
+            BufferedReader inBuf;
             
             // Read in the list of web robots needed for COUNTER compliance checking
 			String filePath = null;
 			try {
-	            BufferedReader inBuf;
+				if (doWebRobotIPcheck) {
+					String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
+					String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
+					// Read in the list of IP addresses associated with known web robots
+					inBuf = new BufferedReader(new FileReader(webRobotIPsFilePath));
+					CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+					webRobotIPs = parser.getRecords();
+					parser.close();
+					// Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
+					// will be flagged as robot requests, so that these requests can be easily filtered
+					// from usage statistics
+					inBuf = new BufferedReader(new FileReader(DataONE_IPsFilePath));
+					parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+					webRobotIPs.addAll(parser.getRecords());
+					parser.close();
+				}
+				
 	            String inLine;
-				filePath = robotsStrictFilePath;
+				filePath = fullWebRobotListFilePath;
 				inBuf = new BufferedReader(new FileReader(filePath));
 				while ((inLine = inBuf.readLine()) != null) {
-					robotsStrict.add(inLine);
+					fullWebRobotList.add(inLine);
 				}
 				inBuf.close();
 				
-				filePath = robotsLooseFilePath;
+				filePath = partialWebRobotListFilePath;
 				inBuf = new BufferedReader(new FileReader(filePath));
 				while ((inLine = inBuf.readLine()) != null) {
-					robotsLoose.add(inLine);
+					partialWebRobotList.add(inLine);
 				}
 				inBuf.close();
 			} catch (FileNotFoundException ex) {
@@ -313,11 +339,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             			 */
             			solrItem.updateSysmetaFields(systemMetadata);
                     	solrItem.updateLocationFields(geoIPsvc);
-                    	solrItem.setCOUNTERfields(robotsLoose, robotsStrict, readEventCache, eventsToCheck, repeatVisitIntervalSeconds);
-                    	// The cache of read events, indexed by IP address, has grown past the max allowed size, so purge entries that are older
-                    	// than the repeatVisitIntervalSeconds minus the time from the latest event.
-                    	if (readEventCache.size() > readEventCacheMax) {
-                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache");
+                    	solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck, repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+                        // Purge the read event cache if it grows past a specified max value, however
+                        // the number of items in the cache is determined by how far away they are from
+                        // the time of the last event, so we need to check the purged size to see
+                    	// if the the cache needs to be bigger.
+                       	if (readEventCache.size() > readEventCacheCurrentMax) {
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache, size: " + readEventCache.size());
+
                             Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
                             DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds+1);
                             while(iterator.hasNext()){
@@ -327,8 +356,27 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     			}
                             }
                             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Read Event Cache size after purge: " + readEventCache.size());
+
+                            // The eventCache purged of events that are older than repeatVisitIntervalSeconds minus the latest time.
+                            // If the cache is larger max size after the purge, then adjust the max size to 5% greater than the
+                            // purged size.
+                            // The intent here is to intelligently increase the size of the cache so that it fits the current time window size,
+                            // so that the cache isn't being purged continually.
+                            if (readEventCache.size() > readEventCacheCurrentMax) {
+                                float perc;
+                                perc = (float) readEventCache.size() * (5.0f / 100.0f);
+                                int newMax = readEventCache.size() + Math.round(perc);
+                                // Try to increase cache size, but don't increase past max value
+                                if (newMax < readEventCacheMax) {
+                                	readEventCacheCurrentMax = newMax;
+                                	logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "Adjusting readEventCache max to: " + readEventCacheCurrentMax);
+                                } else {
+                                	readEventCacheCurrentMax = readEventCacheMax;
+                                	logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "Can't adjust readEventCache max to greater than: " + readEventCacheMax);
+                                }
+                            }
                     	}
-                    	
+
                         //Long integral = new Long(now.getTime());
                         //Long decimal = new Long(hzAtomicNumber.incrementAndGet());
                         //String id = integral.toString() + "." + decimal.toString();
