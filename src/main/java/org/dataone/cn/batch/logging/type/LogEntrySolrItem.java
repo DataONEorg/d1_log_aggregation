@@ -150,7 +150,7 @@ public class LogEntrySolrItem implements Serializable {
     String location;
 
     @Field("isRepeatVisit")
-    Boolean isRepeatVisit;
+    boolean isRepeatVisit;
     
     @Field("inPartialRobotList")
     boolean inPartialRobotList;
@@ -587,11 +587,11 @@ public class LogEntrySolrItem implements Serializable {
         this.region = region;
     }
     
-    public Boolean getIsRepeatVisit() {
+    public boolean getIsRepeatVisit() {
         return isRepeatVisit;
     }
 
-    public void setIsRepeatVisit(Boolean isRepeatVisit) {
+    public void setIsRepeatVisit(boolean isRepeatVisit) {
         this.isRepeatVisit = isRepeatVisit;
     }
     

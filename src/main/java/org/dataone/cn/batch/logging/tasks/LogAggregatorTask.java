@@ -138,11 +138,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         // Cache for the read events, indexed by IPaddress. This cache will grow as the log entries
         // are processed, so it will be purged after it reaches a certain size.
         HashMap<String, DateTime> readEventCache = new HashMap<String, DateTime>();
-        // Max number of entries in the read event cache
-        int readEventCacheMax = Settings.getConfiguration().getInt("LogAggregator.readEventCacheMax");
-        // Starting max number of entries in read event cache, can grow to readEventCacheMax
-        int readEventCacheCurrentMax = 1000;
-        Boolean doWebRobotIPcheck = Settings.getConfiguration().getBoolean("LogAggregator.doWebRobotIPcheck");
         List<CSVRecord> webRobotIPs = new ArrayList<CSVRecord>();
         
         try {
@@ -171,7 +166,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                 // see http://mule1.dataone.org/ArchitectureDocs-current/apis/MN_APIs.html#MNCore.getLogRecords
                 endDateTime = endDateTime.withTime(0, 0, 0, 0);
             }
-
 
             IMap<Identifier, SystemMetadata> systemMetadataMap = hzclient.getMap(hzSystemMetaMapString);
 
@@ -228,6 +222,12 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             String fullWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.fullWebRobotListFilePath");
             String partialWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.partialWebRobotListFilePath");
             final int repeatVisitIntervalSeconds = Settings.getConfiguration().getInt("LogAggregator.repeatVisitIntervalSeconds");
+            Boolean doWebRobotIPcheck = Settings.getConfiguration().getBoolean("LogAggregator.doWebRobotIPcheck");
+            // Max number of entries in the read event cache
+            int readEventCacheMax = Settings.getConfiguration().getInt("LogAggregator.readEventCacheMax");
+            // Starting max number of entries in read event cache, can grow to readEventCacheMax before it is purged
+            // of events older than 30 seconds
+            int readEventCacheCurrentMax = 1000;
             
             BufferedReader inBuf;
             
@@ -238,14 +238,16 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 					String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
 					String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
 					// Read in the list of IP addresses associated with known web robots
-					inBuf = new BufferedReader(new FileReader(webRobotIPsFilePath));
+					filePath = webRobotIPsFilePath;
+					inBuf = new BufferedReader(new FileReader(filePath));
 					CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
 					webRobotIPs = parser.getRecords();
 					parser.close();
 					// Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
 					// will be flagged as robot requests, so that these requests can be easily filtered
 					// from usage statistics
-					inBuf = new BufferedReader(new FileReader(DataONE_IPsFilePath));
+					filePath = DataONE_IPsFilePath;
+					inBuf = new BufferedReader(new FileReader(filePath));
 					parser = new CSVParser(inBuf, CSVFormat.RFC4180);
 					webRobotIPs.addAll(parser.getRecords());
 					parser.close();
@@ -339,6 +341,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             			 */
             			solrItem.updateSysmetaFields(systemMetadata);
                     	solrItem.updateLocationFields(geoIPsvc);
+    			        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Performing counter checks for id: " + logEntry.getIdentifier().getValue());
+
                     	solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck, repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
                         // Purge the read event cache if it grows past a specified max value, however
                         // the number of items in the cache is determined by how far away they are from
