@@ -290,8 +290,8 @@ public class LogEntryProcessorTest extends TestCase {
         	}
         }
         
-		assertEquals(inFullWebRobotListCount, 23, .001);
-		assertEquals(inPartialWebRobotListCount, 18, .001);
+		assertEquals(inFullWebRobotListCount, 238, .001);
+		assertEquals(inPartialWebRobotListCount, 235, .001);
 		assertEquals(repeatVisitCount, 9, .001);
 	}
 }

@@ -27,3 +27,12 @@
 160.91.19.41,mercury-ops2.ornl.gov,urn:node:EDORA
 160.91.19.41,mercury-ops2.ornl.gov,urn:node:RGD
 144.92.62.198,poseidon.limnology.wisc.edu,urn:node:GLEON
+128.111.54.77,cn-sandbox-ucsb-1.test.dataone.org,urn:node:cnSandboxUCSB1
+160.36.13.152,cn-sandbox-orc-1.test.dataone.org,urn:node:cnSandboxORC1
+64.106.40.7,cn-sandbox-unm-1.test.dataone.org,urn:node:cnSandboxUNM1
+128.111.54.110,cn-sandbox-ucsb-2.test.dataone.org,urn:node:cnSandboxUCSB2
+128.111.54.76,cn-stage-ucsb-1.test.dataone.org,urn:node:cnStageUCSB1
+160.36.13.151,cn-stage-orc-1.test.dataone.org,urn:node:cnStageORC1
+64.106.40.8,cn-stage-unm-1.test.dataone.org,urn:node:cnStageUNM1
+129.237.201.86,cn-stage-unm-2.test.dataone.org,urn:node:cnStageUNM2
+160.36.13.141,cn-stage-orc-2.test.dataone.org,urn:node:cnStageORC2
