@@ -321,7 +321,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         if (logEntry.getDateLogged().after(mostRecentLoggedDate)) {
                             mostRecentLoggedDate = logEntry.getDateLogged();
                         }
-                        
+
                         Date now = new Date();
                         Date dateAggregated = now;
                         LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
@@ -329,6 +329,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         
                         // overwrite whatever the logEntry tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
+    			        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Setting solr fields for entry: " + logEntry.getIdentifier().getValue());
+
                         nodeId = d1NodeReference.getValue();
                         solrItem.setNodeIdentifier(nodeId);
                         solrItem.setDateAggregated(now);
@@ -341,8 +343,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             			 */
             			solrItem.updateSysmetaFields(systemMetadata);
                     	solrItem.updateLocationFields(geoIPsvc);
-    			        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Performing counter checks for id: " + logEntry.getIdentifier().getValue());
-
                     	solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck, repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
                         // Purge the read event cache if it grows past a specified max value, however
                         // the number of items in the cache is determined by how far away they are from
@@ -391,7 +391,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         String id = nodeId + "." + logEntry.getEntryId();
                         solrItem.setId(id);
                         logEntrySolrItemList.add(solrItem);
+                        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " added id: " + logEntry.getIdentifier().getValue() + " to solt item list.");
                     }
+                    
+    			    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Done setting fields for entries, # of items to be added: " + logEntrySolrItemList.size());
 
                     // publish 100 at a time, do not overwhelm the
                     // network with massive packets, or too many small packets
@@ -404,6 +407,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         }
                         List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
                         publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
+                        logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " publishing " + publishEntrySolrItemList.size() + " itmes to hzLogEntryTopic");
                         hzLogEntryTopic.publish(publishEntrySolrItemList);
 
                         try {

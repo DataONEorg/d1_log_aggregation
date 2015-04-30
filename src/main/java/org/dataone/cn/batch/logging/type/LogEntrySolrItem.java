@@ -251,7 +251,6 @@ public class LogEntrySolrItem implements Serializable {
 			geohashLong = geoIPsvc.getLongitude();
 			String location = String.format("%.4f", geohashLat) + ", "
 					+ String.format("%.4f", geohashLong);
-			System.out.println("location: " + location);
 			this.setLocation(location);
 			try {
 				geohash = GeoHash.withCharacterPrecision(geohashLat,
@@ -307,7 +306,6 @@ public class LogEntrySolrItem implements Serializable {
 			robotMatcher = robotPattern.matcher(this.userAgent.trim());
 	        if (robotMatcher.find()) {
 	        	setInPartialRobotList(true);
-	        	//System.out.println("Found robot loose: " + this.userAgent.trim());
 	        	break;
 	        }
 		}
@@ -319,7 +317,6 @@ public class LogEntrySolrItem implements Serializable {
 			robotMatcher = robotPattern.matcher(this.userAgent.trim());
 	        if (robotMatcher.find()) {
 	        	setInFullRobotList(true);
-	        	//System.out.println("Found robot strict: " + this.userAgent.trim());
 	        	break;
 	        }
 		}
@@ -349,16 +346,12 @@ public class LogEntrySolrItem implements Serializable {
 					utils = new SubnetUtils(webBotIP);
 					inRange = utils.getInfo().isInRange(this.ipAddress.trim());
 					if (inRange) {
-						//System.out.println("Found webot for IP: " + this.ipAddress + ", webBot IP range: " + webBotIP
-						//		+ ", webBot user agent string: " + webBot.get(1));
 						this.setInPartialRobotList(true);
 						this.setInFullRobotList(true);
 						break;
 					}
 				} else if (IPsingleMatcher.find()) {
 					if (webBotIP.trim().equals(this.ipAddress.trim())) {
-						//System.out.println("Found webot for IP: " + this.ipAddress + ", webBot IP range: " + webBotIP
-						//		+ ", webBot user agent string: " + webBot.get(1));
 						this.setInPartialRobotList(true);
 						this.setInFullRobotList(true);
 						break;
@@ -381,7 +374,6 @@ public class LogEntrySolrItem implements Serializable {
 			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
 			if (readEventTime.isAfter(cachedEventTime) && readEventTime.isBefore(intervalEndTime)) {
 				this.setIsRepeatVisit(true);
-				//System.out.println("Repeat visit for id: " + this.getPid() + ", IP: " + this.ipAddress + ", dateLogged: " + this.dateLogged);
 			} else {
 				// This event entry must be after the repeatEventInterval, so
 				// make it the new beginning of the repeatEventInterval for this IP address.
