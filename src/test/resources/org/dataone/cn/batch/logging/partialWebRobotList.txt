@@ -40,7 +40,6 @@ WebStripper
 WebZIP
 Webinator
 Webmetrics
-Wget
 Xenu(\s|\+)Link(\s|\+)Sleuth
 [+:,\.\;\/\\-]bot
 [^a]fish
