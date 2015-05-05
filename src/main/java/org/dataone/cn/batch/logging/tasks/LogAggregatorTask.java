@@ -329,8 +329,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         
                         // overwrite whatever the logEntry tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
-    			        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Setting solr fields for entry: " + logEntry.getIdentifier().getValue());
-
                         nodeId = d1NodeReference.getValue();
                         solrItem.setNodeIdentifier(nodeId);
                         solrItem.setDateAggregated(now);
@@ -350,7 +348,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     	// if the the cache needs to be bigger.
                        	if (readEventCache.size() > readEventCacheCurrentMax) {
                             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache, size: " + readEventCache.size());
-
                             Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
                             DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds+1);
                             while(iterator.hasNext()){
@@ -380,10 +377,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                 }
                             }
                     	}
-
-                        //Long integral = new Long(now.getTime());
-                        //Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                        //String id = integral.toString() + "." + decimal.toString();
                     	
                         /* Use the Member Node identifier combined with entryId for the Solr unique key. This natural key should be 
                          * globally unique, but also ensure that re-harvesting will not add duplicate records.
