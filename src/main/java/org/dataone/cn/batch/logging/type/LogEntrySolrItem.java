@@ -24,10 +24,13 @@ package org.dataone.cn.batch.logging.type;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.math.BigInteger;
 
 import org.apache.commons.csv.CSVRecord;
 import org.apache.commons.net.util.SubnetUtils;
@@ -37,17 +40,18 @@ import org.dataone.client.ObjectFormatCache;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.service.exceptions.BaseException;
+import org.dataone.service.exceptions.InvalidToken;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.service.types.v1.ObjectFormat;
 import org.dataone.service.types.v1.ObjectFormatIdentifier;
+import org.dataone.service.types.v1.Subject;
 import org.dataone.service.types.v1.SystemMetadata;
 import org.joda.time.DateTime;
 import org.joda.time.Period;
 
 import ch.hsr.geohash.GeoHash;
 
-import java.util.Date;
-import java.util.List;
+
 /**
  *  Allows the LogEntry domain object to be mapped to a Solr POJO
  * 
@@ -191,9 +195,13 @@ public class LogEntrySolrItem implements Serializable {
 		/* Populate the fields that come from systemMetadata.
 		 */
 		if (systemMetadata != null) {
-			formatId = systemMetadata.getFormatId().getValue();
-			this.setFormatId(formatId);
+			ObjectFormatIdentifier formatIdObj = systemMetadata.getFormatId();
+			if (formatIdObj != null) {
+				formatId = formatIdObj.getValue();
+			}
+
 			if (formatId != null) {
+				this.setFormatId(formatId);
 				ObjectFormat format = null;
 				try {
 					ObjectFormatIdentifier objectFormat = new ObjectFormatIdentifier();
@@ -202,18 +210,27 @@ public class LogEntrySolrItem implements Serializable {
 							objectFormat);
 					this.setFormatType(format.getFormatType());
 				} catch (BaseException e) {
-					logger.warn("Unable to obtain formatType for pid "
+					logger.warn("Unable to obtain formatType from object format cache for pid "
 							+ this.getPid() + ": " + e.getMessage());
 				}
 			}
 			
 			List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
-			this.setIsPublic(isPublicSubject);
 			this.setReadPermission(subjectsAllowedRead);
-			this.setSize(systemMetadata.getSize().longValue());
-			this.setRightsHolder(systemMetadata.getRightsHolder().getValue());
-			this.setIsPublic(isPublicSubject);
+			BigInteger objSize = systemMetadata.getSize();
+			if (objSize != null) {
+				this.setSize(systemMetadata.getSize().longValue());
+			} else {
+				this.setSize(0L);
+			}
+			Subject rh = systemMetadata.getRightsHolder();
+			if (rh != null) {
+			    this.setRightsHolder(rh.getValue());
+			} 
 		}
+		
+		// This appears to be an unused field 
+		this.setIsPublic(isPublicSubject);
 	}
 	
 	/*
