@@ -8,18 +8,37 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.security.*;
+import java.security.KeyManagementException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.SecureRandom;
+import java.security.Security;
+import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
-import javax.net.ssl.*;
-import org.apache.commons.httpclient.HttpClient;
+
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
 import org.apache.commons.httpclient.protocol.Protocol;
 import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.openssl.PEMReader;
-import org.dataone.client.auth.CertificateManager;
+import org.bouncycastle.jce.provider.X509CertificateObject;
+import org.bouncycastle.openssl.PEMKeyPair;
+import org.bouncycastle.openssl.PEMParser;
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.dataone.configuration.Settings;
 import org.jsslutils.extra.apachehttpclient.SslContextedSecureProtocolSocketFactory;
 import org.jsslutils.sslcontext.SSLContextFactory.SSLContextFactoryException;
@@ -156,21 +175,33 @@ public class CommonsHttpClientProtocolRegistry {
         // get the private key and certificate from the PEM
         // TODO: find a way to do this with default Java provider (not Bouncy Castle)?
         Security.addProvider(new BouncyCastleProvider());
-        PEMReader pemReader = new PEMReader(new FileReader(clientCertificateLocation));
-        Object pemObject = null;
-
-        KeyPair keyPair = null;
-        while ((pemObject = pemReader.readObject()) != null) {
-            if (pemObject instanceof PrivateKey) {
-                privateKey = (PrivateKey) pemObject;
-            } else if (pemObject instanceof KeyPair) {
-                keyPair = (KeyPair) pemObject;
-                privateKey = keyPair.getPrivate();
-            } else if (pemObject instanceof X509Certificate) {
-                certificate = (X509Certificate) pemObject;
+        
+        PEMParser pemReader = null;
+        try {
+            pemReader = new PEMParser(new FileReader(clientCertificateLocation));
+            Object pemObject = null;
+            JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
+            while ((pemObject = pemReader.readObject()) != null) {
+                if (pemObject instanceof PrivateKeyInfo) {
+                	PrivateKeyInfo pki = (PrivateKeyInfo) pemObject;
+                    privateKey = converter.getPrivateKey(pki);
+                }
+                else if (pemObject instanceof PEMKeyPair) {
+                    PEMKeyPair pkp = (PEMKeyPair) pemObject;
+                    privateKey = converter.getPrivateKey(pkp.getPrivateKeyInfo());
+                } else if (pemObject instanceof X509CertificateHolder) {
+                	X509CertificateHolder holder = (X509CertificateHolder) pemObject;
+    				try {
+						certificate = new X509CertificateObject(holder.toASN1Structure());
+					} catch (CertificateParsingException e) {
+						log.warn("Could not parse x509 certificate", e);
+					}
+                }
             }
+        } finally {
+            IOUtils.closeQuietly(pemReader);
         }
-
+        
         KeyStore keyStore = KeyStore.getInstance(keyStoreType);
         keyStore.load(null, keyStorePassword.toCharArray());
         java.security.cert.Certificate[] chain = new java.security.cert.Certificate[]{certificate};
