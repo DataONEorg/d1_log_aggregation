@@ -81,6 +81,7 @@ public class GeoIPService {
 		country = null;
 		region = null;
 		city = null;
+		Logger logger = Logger.getLogger(GeoIPService.class.getName());
 
 		// Reopen the database file if we have closed it.
 		if (geoIPsvc == null)
@@ -98,9 +99,8 @@ public class GeoIPService {
 					latitude = location.latitude;
 					longitude = location.longitude;
 				} else {
-					System.out.println("location not found");
+					logger.error("Location not found for IP address: " + "\"" + IPaddr + "\"");
 				}
-				System.out.println("country: " + country + ", region: " + region + ", city: " + city);
 			}
 		}
 	}
