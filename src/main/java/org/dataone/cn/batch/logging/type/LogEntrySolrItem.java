@@ -28,6 +28,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.math.BigInteger;
@@ -199,7 +200,7 @@ public class LogEntrySolrItem implements Serializable {
 			if (formatIdObj != null) {
 				formatId = formatIdObj.getValue();
 			}
-
+			
 			if (formatId != null) {
 				this.setFormatId(formatId);
 				ObjectFormat format = null;
@@ -213,6 +214,8 @@ public class LogEntrySolrItem implements Serializable {
 					logger.warn("Unable to obtain formatType from object format cache for pid "
 							+ this.getPid() + ": " + e.getMessage());
 				}
+			} else {
+				this.setFormatId("");
 			}
 			
 			List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
@@ -303,7 +306,9 @@ public class LogEntrySolrItem implements Serializable {
 
 		String IPaddress = this.getIpAddress();
 		String docId = this.getPid();
-		DateTime readEventTime = new DateTime(this.getDateLogged());
+		DateTime readEventTime = null;
+
+	    readEventTime = new DateTime(this.getDateLogged());
 	    DateTime intervalEndTime;
 	    // JodaTime intervals are exclusive for the end of an interval, so add one second to the period
 	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds+1);
@@ -319,6 +324,11 @@ public class LogEntrySolrItem implements Serializable {
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
 		// the current record.
 		for (String robotRegex : partialRobotList) {
+			if (this.userAgent == null || this.userAgent.compareTo("") == 0) {
+				setInPartialRobotList(false);
+				//logger.debug("UserAgent null or blank for entryId: " + this.entryId);
+				break;
+			}
 			robotPattern = Pattern.compile(robotRegex.trim());
 			robotMatcher = robotPattern.matcher(this.userAgent.trim());
 	        if (robotMatcher.find()) {
@@ -331,6 +341,11 @@ public class LogEntrySolrItem implements Serializable {
 		// the current record.
 		for (String robotRegex : fullRobotList) {
 			robotPattern = Pattern.compile(robotRegex.trim());
+			if (this.userAgent == null || this.userAgent.compareTo("") == 0) {
+				//logger.debug("UserAgent null or blank for entryId: " + this.entryId);
+				setInFullRobotList(false);
+				break;
+			}
 			robotMatcher = robotPattern.matcher(this.userAgent.trim());
 	        if (robotMatcher.find()) {
 	        	setInFullRobotList(true);
@@ -345,55 +360,82 @@ public class LogEntrySolrItem implements Serializable {
 		if (doWebRobotIPcheck && !(this.getInPartialRobotList() && this.getInFullRobotList())) {
 			Boolean inRange;
 			SubnetUtils utils;
-			// Does this web robot IP specify a CIDR netmask, i.e. "192.168.0.15/24"
+			// Does this web robot IP specify a CIDR netmask, i.e.
+			// "192.168.0.15/24"
 			Pattern IPrangePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+");
 			Pattern IPsinglePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+");
 			Matcher IPrangeMatcher;
 			Matcher IPsingleMatcher;
-			for (CSVRecord webBot : webRobotIPs) {
-				String webBotIP = webBot.get(0).trim();
-				// Check if this IP is a CIDR, i.e. range of IP addresses. If
-				// yes, then we have to see if the IP of the read request is in the range
-				// of IP addresses specified in the CIDR address, i.e. is 192.168.0.1
-				// in the range 192.168.0.15/24
-				IPrangeMatcher = IPrangePattern.matcher(webBotIP);
-				IPsingleMatcher = IPsinglePattern.matcher(webBotIP);
-				inRange = false;
-				if (IPrangeMatcher.find()) {
-					utils = new SubnetUtils(webBotIP);
-					inRange = utils.getInfo().isInRange(this.ipAddress.trim());
-					if (inRange) {
-						this.setInPartialRobotList(true);
-						this.setInFullRobotList(true);
-						break;
-					}
-				} else if (IPsingleMatcher.find()) {
-					if (webBotIP.trim().equals(this.ipAddress.trim())) {
-						this.setInPartialRobotList(true);
-						this.setInFullRobotList(true);
+			if (this.ipAddress == null || this.ipAddress.trim().compareTo("") == 0) {
+				this.setInPartialRobotList(false);
+				this.setInFullRobotList(false);
+			} else {
+				for (CSVRecord webBot : webRobotIPs) {
+					try {
+						String webBotIP = webBot.get(0).trim();
+						// Check if this IP is a CIDR, i.e. range of IP
+						// addresses.
+						// If
+						// yes, then we have to see if the IP of the read
+						// request is
+						// in the range
+						// of IP addresses specified in the CIDR address, i.e.
+						// is
+						// 192.168.0.1
+						// in the range 192.168.0.15/24
+						IPrangeMatcher = IPrangePattern.matcher(webBotIP);
+						IPsingleMatcher = IPsinglePattern.matcher(webBotIP);
+						inRange = false;
+						if (IPrangeMatcher.find()) {
+							utils = new SubnetUtils(webBotIP);
+							inRange = utils.getInfo().isInRange(this.ipAddress.trim());
+							if (inRange) {
+								//logger.debug("Matched IP " + this.ipAddress.trim() + " with web robot IP range: " + webBotIP);
+								this.setInPartialRobotList(true);
+								this.setInFullRobotList(true);
+								break;
+							}
+						} else if (IPsingleMatcher.find()) {
+							if (webBotIP.trim().equals(this.ipAddress.trim())) {
+								// logger.debug("Matched IP " + this.ipAddress.trim() + " with single web robot IP: " + webBotIP);
+								this.setInPartialRobotList(true);
+								this.setInFullRobotList(true);
+								break;
+							}
+						}
+					} catch (IllegalArgumentException ia) {
+						logger.error("setCOUNTERfields: Invalid IP address encountered: " + "\"" + this.ipAddress + "\"");
+						this.setInPartialRobotList(false);
+						this.setInFullRobotList(false);
 						break;
 					}
 				}
 			}
 		}
-			
+		
 		DateTime cachedEventTime;
 		// Check if this log record is a 'repeat visit', i.e. this is a read
-		// event from the same IP address, for the same docid as an earlier request happening
+		// event from the same IP address, for the same docid as an earlier
+		// request happening
 		// within a specified time interval. 
-		// Note: The event records returned from the DataONE member node are ordered by 'entryId',
-		// thus they are also ordered by date/time, so it is true that events are processed in order, by date.
+		// Note: The event records returned from the DataONE member node are
+		// ordered by 'entryId',
+		// thus they are also ordered by date/time, so it is true that
+		// events are processed in order, by date.
 		String eventKey = IPaddress + docId;
 		if (readEventCache.containsKey(eventKey)) {
-			// A read event for this IP address + docId was previously cached, so see if the current read event
+			// A read event for this IP address + docId was previously
+			// cached, so see if the current read event
 			// was within 30 seconds of the cached one.
 			cachedEventTime = readEventCache.get(eventKey);
 			intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
 			if (readEventTime.isAfter(cachedEventTime) && readEventTime.isBefore(intervalEndTime)) {
 				this.setIsRepeatVisit(true);
 			} else {
-				// This event entry must be after the repeatEventInterval, so
-				// make it the new beginning of the repeatEventInterval for this IP address.
+				// This event entry must be after the repeatEventInterval,
+				// so
+				// make it the new beginning of the repeatEventInterval for
+				// this IP address.
 				readEventCache.put(eventKey, readEventTime);
 				this.setIsRepeatVisit(false);
 			}

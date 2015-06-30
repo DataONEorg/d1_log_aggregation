@@ -318,6 +318,11 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
                     for (LogEntry logEntry : readQueue) {
+                        if (logEntry.getIdentifier() == null || logEntry.getIdentifier().getValue() == null || logEntry.getIdentifier().getValue().trim().compareTo("") == 0) {
+                        	logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " Blank or null identifier encountered for entryId: " + logEntry.getEntryId() + ", skipping record.");
+                        	continue;
+                        }
+
                         if (logEntry.getDateLogged().after(mostRecentLoggedDate)) {
                             mostRecentLoggedDate = logEntry.getDateLogged();
                         }
@@ -339,9 +344,31 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             			 * derived from a field in the logEntry (i.e. location names,
             			 * geohash_* are derived from the ipAddress in the logEntry).
             			 */
-            			solrItem.updateSysmetaFields(systemMetadata);
-                    	solrItem.updateLocationFields(geoIPsvc);
-                    	solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck, repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+						try {
+							solrItem.updateSysmetaFields(systemMetadata);
+						} catch (Exception e) {
+							e.printStackTrace();
+							logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+									+ " error setting system metadata fields for log entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+							continue;
+						}
+						try {
+							solrItem.updateLocationFields(geoIPsvc);
+						} catch (Exception e) {
+							e.printStackTrace();
+							logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+									+ " error setting location fields for log entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+							continue;
+						}
+						try {
+							solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck,
+									repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+						} catch (Exception e) {
+							e.printStackTrace();
+							logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+									+ " error setting COUNTER fields for log entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+							continue;
+						}
                         // Purge the read event cache if it grows past a specified max value, however
                         // the number of items in the cache is determined by how far away they are from
                         // the time of the last event, so we need to check the purged size to see

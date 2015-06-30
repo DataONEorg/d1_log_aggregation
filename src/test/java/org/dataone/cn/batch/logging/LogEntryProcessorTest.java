@@ -27,6 +27,7 @@ import junit.framework.Test;
 import junit.framework.TestCase;
 import junit.framework.TestSuite;
 
+import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.Event;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.NodeReference;
@@ -34,6 +35,7 @@ import org.dataone.service.types.v1.Subject;
 import org.dataone.service.types.v1.LogEntry;
 import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
+import org.dataone.configuration.Settings;
 import org.joda.time.DateTime;
 
 import java.io.FileNotFoundException;
@@ -135,9 +137,20 @@ public class LogEntryProcessorTest extends TestCase {
         String parialWebRobotListFilePath = "./src/test/resources/org/dataone/cn/batch/logging/partialWebRobotList.txt";
         String webRobotIPsFilePath = "./src/test/resources/org/dataone/cn/batch/logging/webRobotIPs.csv";
         String DataONE_IPsFilePath = "./src/test/resources/org/dataone/cn/batch/logging/DataONE_IPs.csv";
+        String GeoIPdb = "./src/test/resources/org/dataone/cn/batch/logging/GeoLiteCity.dat";
         final int repeatVisitIntervalSeconds = 30;
         // In production code, this will be a property read in from the log agg properties file.
         Boolean doWebRobotIPcheck = true;
+        
+		GeoIPService geoIPsvc;
+        // Create a service to determine location name from IP address that was obtained from a log entry
+        String dbFilename = Settings.getConfiguration().getString(
+				"LogAggregator.geoIPdbName");
+		try {
+			geoIPsvc = GeoIPService.getInstance(GeoIPdb);
+		} catch (Exception e) {
+			throw new ServiceFailure(e.getMessage(), "Unable to initialize the GeoIP service");
+		}
         
 		if (doWebRobotIPcheck) {
 			// Read in the list of web robot IP addresses
@@ -228,21 +241,53 @@ public class LogEntryProcessorTest extends TestCase {
         	logEntry.setNodeIdentifier(nodeIdentifier);
             logEntry.setEntryId(logRec.get(0));
             //System.out.println("EntryId: " + logEntry.getEntryId());
-            logEntry.setIpAddress(logRec.get(1));
+            
             Subject thisSubject = new Subject();
             thisSubject.setValue(logRec.get(2));
             logEntry.setSubject(thisSubject);
             Identifier thisId = new Identifier();
             thisId.setValue(logRec.get(3));
-            //System.out.println("id: " + thisId.getValue());
+
+            if (thisId.getValue() == null || thisId.getValue().compareTo("") == 0) {
+            	logger.error("Blank or null identifier encountered for entryId: " + logEntry.getEntryId() + ", skipping record.");
+            	continue;
+            }
             logEntry.setIdentifier(thisId);
+            logger.debug("Processing entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+
+            try {
+                logEntry.setIpAddress(logRec.get(1));
+            }  catch (Exception e) {
+            	logger.error("Error parsing IP address, entryId: " + logEntry.getEntryId() + ", IP address: " + logRec.get(5));
+            	continue;
+            }
+            //System.out.println("id: " + thisId.getValue());
+
             logEntry.setEvent(Event.convert(logRec.get(4)));
             logEntry.setDateLogged(simpleDF.parse(logRec.get(5)));
+ 
             logEntry.setUserAgent(logRec.get(6));
             solrItem = new LogEntrySolrItem(logEntry);
+            // Test that the input record, which may contain null or corrupted fields, doesn't cause these methods to throw an exception
+			try {
+				solrItem.updateLocationFields(geoIPsvc);
+			} catch (Exception e) {
+				e.printStackTrace();
+				logger.error("LogEntryProcessTest-" + " error setting location fields for log entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+				continue;
+			}
             // This is the core of this unit test, to ensure that this routine sets fields correctly
             // for each entry.
-        	solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck, repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+
+			try {
+				solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck,
+						repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+			} catch (Exception e) {
+				logger.error("LogEntryProcessTest-"
+						+ " error setting COUNTER fields for log entryId: " + logEntry.getEntryId() + ", id: " + logEntry.getIdentifier().getValue());
+				continue;
+			}
+  
         	if (solrItem.getInFullRobotList()) {
         		inFullWebRobotListCount += 1;
         	}
