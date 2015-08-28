@@ -21,7 +21,7 @@ import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.Log;
-import org.dataone.service.util.TypeMarshaller;
+import org.dataone.service.types.v2.TypeFactory;
 
 public class MNCommunication extends NodeCommunication {
 	
@@ -135,7 +135,7 @@ public class MNCommunication extends NodeCommunication {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " log harvested start#=" + logList.getStart() + " count=" + logList.getCount() + " total=" + logList.getTotal());
                     start += logList.getCount();
                     
-                    org.dataone.service.types.v2.Log convertedLogs = TypeMarshaller.convertTypeFromType(logList, org.dataone.service.types.v2.Log.class);
+                    org.dataone.service.types.v2.Log convertedLogs = TypeFactory.convertTypeFromType(logList, org.dataone.service.types.v2.Log.class);
                     
 					writeQueue.addAll(convertedLogs.getLogEntryList());
                     total = logList.getTotal();
