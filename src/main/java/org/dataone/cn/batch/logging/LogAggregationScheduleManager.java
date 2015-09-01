@@ -36,7 +36,6 @@ import java.util.logging.Logger;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
@@ -113,7 +112,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware,
     ApplicationContext applicationContext;
     PartitionService partitionService;
     Member localMember;
-    private SolrServer localhostSolrServer;
+    private HttpSolrClient localhostSolrServer;
     private LogEntryTopicListener logEntryTopicListener;
     private SystemMetadataEntryListener systemMetadataEntryListener;
     private static SimpleScheduleBuilder simpleTriggerSchedule = null;
@@ -640,11 +639,11 @@ public class LogAggregationScheduleManager implements ApplicationContextAware,
         this.applicationContext = applicationContext;
     }
 
-    public SolrServer getLocalhostSolrServer() {
+    public HttpSolrClient getLocalhostSolrServer() {
         return localhostSolrServer;
     }
 
-    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
+    public void setLocalhostSolrServer(HttpSolrClient localhostSolrServer) {
         this.localhostSolrServer = localhostSolrServer;
     }
 
