@@ -5,7 +5,8 @@
 package org.dataone.solr.client.solrj.impl;
 
 import java.net.MalformedURLException;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 
 /**
  * Solr From 1.3.0 - 3.4.0, 3.5.0 this is deprecated and we can remove this
@@ -16,12 +17,12 @@ import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
  * 
  * @author waltz
  */
-public class LocalhostCommonsHttpSolrServer extends CommonsHttpSolrServer {
+public class LocalhostCommonsHttpSolrServer extends HttpSolrClient {
 
-   public LocalhostCommonsHttpSolrServer(String solrServerUrl) throws MalformedURLException {
-       super(solrServerUrl);
-   }
-   public void setConnectManagerTimeout(long timeout) {
-       super.setConnectionManagerTimeout(timeout);
-   }
+    public LocalhostCommonsHttpSolrServer(String solrServerUrl) throws MalformedURLException {
+        super(solrServerUrl);
+    }
+
+    public void setConnectManagerTimeout(long timeout) {
+    }
 }

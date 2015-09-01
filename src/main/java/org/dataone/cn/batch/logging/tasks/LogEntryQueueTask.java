@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.log4j.Logger;
-import org.apache.solr.client.solrj.SolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
@@ -64,7 +64,7 @@ public class LogEntryQueueTask implements Callable {
     // Manage this class.  Init will spawn off sequential threads of this class
     // and will do so until an exception is raised.
     private HazelcastInstance hazelcast;
-    SolrServer localhostSolrServer = null;
+    HttpSolrClient localhostSolrServer = null;
     long pollingQueueTimeout = 60L;
 
     public void init() {
@@ -82,7 +82,8 @@ public class LogEntryQueueTask implements Callable {
 
             Map<Future, List<LogEntrySolrItem>> futuresMap = new HashMap<Future, List<LogEntrySolrItem>>();
             do {
-                boolean activateJob  = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+                boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString(
+                        "LogAggregator.active"));
                 if (activateJob) {
                     indexLogTasks = indexLogEntryQueue.poll(pollingQueueTimeout, TimeUnit.SECONDS);
                 } else {
@@ -115,7 +116,6 @@ public class LogEntryQueueTask implements Callable {
 
                             logger.info("The Future has been cancelled");
 
-
                             removalList.add(future);
                         } catch (TimeoutException ex) {
 
@@ -143,7 +143,10 @@ public class LogEntryQueueTask implements Callable {
                     }
                 } else {
                     for (LogEntrySolrItem indexLogTask : indexLogTasks) {
-                        logger.info("LogEntryQueueTask-" + indexLogTask.getNodeIdentifier() + ":" + indexLogTask.getEntryId() + ":" + format.format(indexLogTask.getDateLogged()) + ":" + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
+                        logger.info("LogEntryQueueTask-" + indexLogTask.getNodeIdentifier() + ":"
+                                + indexLogTask.getEntryId() + ":"
+                                + format.format(indexLogTask.getDateLogged()) + ":"
+                                + indexLogTask.getSubject() + ":" + indexLogTask.getEvent());
                     }
                     logEntryBuffer.addAll(indexLogTasks);
                     if (logEntryBuffer.size() >= maxIndexBufferSize) {
@@ -151,10 +154,14 @@ public class LogEntryQueueTask implements Callable {
                     }
                 }
 
-                logger.debug("ActiveCount: " + taskExecutor.getActiveCount() + " Pool size " + taskExecutor.getPoolSize() + " Max Pool Size " + taskExecutor.getMaxPoolSize());
+                logger.debug("ActiveCount: " + taskExecutor.getActiveCount() + " Pool size "
+                        + taskExecutor.getPoolSize() + " Max Pool Size "
+                        + taskExecutor.getMaxPoolSize());
                 if ((taskExecutor.getPoolSize() + 5) > taskExecutor.getMaxPoolSize()) {
-                    if ((taskExecutor.getPoolSize() == taskExecutor.getMaxPoolSize()) && futuresMap.isEmpty()) {
-                        BlockingQueue<Runnable> blockingTaskQueue = taskExecutor.getThreadPoolExecutor().getQueue();
+                    if ((taskExecutor.getPoolSize() == taskExecutor.getMaxPoolSize())
+                            && futuresMap.isEmpty()) {
+                        BlockingQueue<Runnable> blockingTaskQueue = taskExecutor
+                                .getThreadPoolExecutor().getQueue();
                         Runnable[] taskArray = {};
                         taskArray = blockingTaskQueue.toArray(taskArray);
                         for (int j = 0; j < taskArray.length; ++j) {
@@ -176,12 +183,14 @@ public class LogEntryQueueTask implements Callable {
         return "Completed";
     }
 
-    private void executeLogIndexTask(Map<Future, List<LogEntrySolrItem>> futuresMap, List<LogEntrySolrItem> logEntryBuffer) {
+    private void executeLogIndexTask(Map<Future, List<LogEntrySolrItem>> futuresMap,
+            List<LogEntrySolrItem> logEntryBuffer) {
         // Do not exceed the max number of tasks
         if ((taskExecutor.getPoolSize() + 1) < taskExecutor.getMaxPoolSize()) {
             List<LogEntrySolrItem> indexLogEntryBuffer = new ArrayList<LogEntrySolrItem>();
             indexLogEntryBuffer.addAll(logEntryBuffer);
-            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(localhostSolrServer, indexLogEntryBuffer);
+            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(localhostSolrServer,
+                    indexLogEntryBuffer);
             FutureTask futureTask = new FutureTask(logEntryIndexTask);
             taskExecutor.execute(futureTask);
             futuresMap.put(futureTask, indexLogEntryBuffer);
@@ -221,11 +230,11 @@ public class LogEntryQueueTask implements Callable {
         this.hazelcast = hazelcast;
     }
 
-    public SolrServer getLocalhostSolrServer() {
+    public HttpSolrClient getLocalhostSolrServer() {
         return localhostSolrServer;
     }
 
-    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
+    public void setLocalhostSolrServer(HttpSolrClient localhostSolrServer) {
         this.localhostSolrServer = localhostSolrServer;
     }
 

@@ -25,10 +25,11 @@ package org.dataone.cn.batch.logging.tasks;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Callable;
+
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
-import org.apache.solr.client.solrj.SolrServer;
 
 /**
  * Indexes a list of LogEntrySolrItems
@@ -46,11 +47,13 @@ public class LogEntryIndexTask implements Callable<String> {
     Logger logger = Logger.getLogger(LogEntryIndexTask.class.getName());
 
     List<LogEntrySolrItem> indexLogEntryBuffer;
-    private SolrServer solrServer;
-    public LogEntryIndexTask( SolrServer solrServer, List<LogEntrySolrItem> indexLogEntryBuffer) {
+    private HttpSolrClient solrServer;
+
+    public LogEntryIndexTask(HttpSolrClient solrServer, List<LogEntrySolrItem> indexLogEntryBuffer) {
         this.indexLogEntryBuffer = indexLogEntryBuffer;
         this.solrServer = solrServer;
     }
+
     /**
      *  Implement the Callable interface, providing code to store LogEntry information
      *  in Solr
@@ -70,7 +73,7 @@ public class LogEntryIndexTask implements Callable<String> {
             // what to do with this exception??? looks bad.
             ex.printStackTrace();
         } catch (IOException ex) {
-             // what to do with this exception??? retry?
+            // what to do with this exception??? retry?
             ex.printStackTrace();
         }
         logger.info("Ending LogEntryIndexTask");
@@ -84,7 +87,7 @@ public class LogEntryIndexTask implements Callable<String> {
      * @return SolrServer
      * @author waltz
      */
-    public SolrServer getServer() {
+    public HttpSolrClient getServer() {
         return solrServer;
     }
 
@@ -94,7 +97,7 @@ public class LogEntryIndexTask implements Callable<String> {
      * @return String
      * @author waltz
      */
-    public void setServer(SolrServer solrServer) {
+    public void setServer(HttpSolrClient solrServer) {
         this.solrServer = solrServer;
     }
 
