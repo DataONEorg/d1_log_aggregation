@@ -515,7 +515,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware,
                     //                    recoveringCnUrl += Settings.getConfiguration().getString(
                     //                            "LogAggregator.solrUrlPath");
                     String localIndexUrl = Settings.getConfiguration().getString(
-                            "http://localhost:8983/solr/event_core");
+                            "LogAggregator.solrUrl");
                     HttpSolrClient recoveringSolrServer = new HttpSolrClient(localIndexUrl);
                     QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
                     List<LogEntrySolrItem> logEntryList = queryResponse
