@@ -74,9 +74,11 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private URLCodec urlCodec = new URLCodec("UTF-8");
 
     public SystemMetadataEntryListener() {
-        String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
-        String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
-        localhostCNURL += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+        //String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
+        //String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
+        //localhostCNURL += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
+
+        String localhostCNURL = Settings.getConfiguration().getString("LogAggregator.solrUrl");
 
         localhostSolrServer = new HttpSolrClient(localhostCNURL);
         try {
