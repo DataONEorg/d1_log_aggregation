@@ -12,7 +12,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring.version>3.1.4.RELEASE</spring.version>
         <quartz.version>2.1.6</quartz.version>
-        <solr.version>3.4.0</solr.version>
+        <solr.version>5.2.1</solr.version>
         <hazelcast.version>2.6.9</hazelcast.version>
         <d1_libclient_version>2.0.0-SNAPSHOT</d1_libclient_version>
         <d1_cn_noderegistry_version>2.0.0-SNAPSHOT</d1_cn_noderegistry_version>

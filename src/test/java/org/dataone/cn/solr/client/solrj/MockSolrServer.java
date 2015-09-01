@@ -26,15 +26,15 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
-import org.apache.solr.client.solrj.SolrRequest;
 
+import org.apache.solr.client.solrj.SolrRequest;
+import org.apache.solr.client.solrj.SolrRequest.METHOD;
+import org.apache.solr.client.solrj.SolrServerException;
+import org.apache.solr.client.solrj.beans.DocumentObjectBinder;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.response.SolrPingResponse;
 import org.apache.solr.client.solrj.response.UpdateResponse;
-import org.apache.solr.client.solrj.SolrRequest.METHOD;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.beans.DocumentObjectBinder;
 import org.apache.solr.common.SolrInputDocument;
 import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.NamedList;
@@ -68,13 +68,18 @@ import org.apache.solr.common.util.NamedList;
  * @since solr 1.3
  *
  */
-public class MockSolrServer extends SolrServer implements Serializable {
+public class MockSolrServer extends HttpSolrClient implements Serializable {
+
+    public MockSolrServer(String baseURL) {
+        super(baseURL);
+    }
 
     private DocumentObjectBinder binder;
     Collection<?> addedBeans = null;
 
     @Override
-    public UpdateResponse add(Collection<SolrInputDocument> docs) throws SolrServerException, IOException {
+    public UpdateResponse add(Collection<SolrInputDocument> docs) throws SolrServerException,
+            IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
@@ -114,51 +119,64 @@ public class MockSolrServer extends SolrServer implements Serializable {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
-    public UpdateResponse commit(boolean waitFlush, boolean waitSearcher) throws SolrServerException, IOException {
+    public UpdateResponse commit(boolean waitFlush, boolean waitSearcher)
+            throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
-    public UpdateResponse optimize(boolean waitFlush, boolean waitSearcher) throws SolrServerException, IOException {
+    public UpdateResponse optimize(boolean waitFlush, boolean waitSearcher)
+            throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
-    public UpdateResponse optimize(boolean waitFlush, boolean waitSearcher, int maxSegments) throws SolrServerException, IOException {
+    public UpdateResponse optimize(boolean waitFlush, boolean waitSearcher, int maxSegments)
+            throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
     public UpdateResponse rollback() throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
     public UpdateResponse deleteById(String id) throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
     public UpdateResponse deleteById(List<String> ids) throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
     public UpdateResponse deleteByQuery(String query) throws SolrServerException, IOException {
         UpdateResponse response = new UpdateResponse();
         return response;
     }
+
     @Override
     public SolrPingResponse ping() throws SolrServerException, IOException {
         SolrPingResponse pingResponse = new SolrPingResponse();
         return pingResponse;
     }
+
     @Override
     public QueryResponse query(SolrParams params) throws SolrServerException {
         QueryResponse queryResponse = new QueryResponse();
         return queryResponse;
     }
+
     @Override
     public QueryResponse query(SolrParams params, METHOD method) throws SolrServerException {
         QueryResponse queryResponse = new QueryResponse();
@@ -173,10 +191,12 @@ public class MockSolrServer extends SolrServer implements Serializable {
      * @throws IOException
      */
     @Override
-    public NamedList<Object> request(final SolrRequest request) throws SolrServerException, IOException {
+    public NamedList<Object> request(final SolrRequest request, String collection)
+            throws SolrServerException, IOException {
         NamedList<Object> namedList = new NamedList<Object>();
         return namedList;
     }
+
     @Override
     public DocumentObjectBinder getBinder() {
         if (binder == null) {
@@ -188,5 +208,5 @@ public class MockSolrServer extends SolrServer implements Serializable {
     public Collection<?> getAddedBeans() {
         return addedBeans;
     }
-    
+
 }

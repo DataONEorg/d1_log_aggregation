@@ -54,7 +54,9 @@
         <property name="waitForTasksToCompleteOnShutdown" value="true" />
     </bean>
 
-    <bean id="localhostSolrServer" class="org.dataone.cn.solr.client.solrj.MockSolrServer" />
+    <bean id="localhostSolrServer" class="org.dataone.cn.solr.client.solrj.MockSolrServer" >
+    	<constructor-arg index="0"  value="mockUrl" />
+    </bean>
     
     <bean id="logEntryQueueTask" class="org.dataone.cn.batch.logging.tasks.LogEntryQueueTask" init-method="init">
         <property name="hazelcast" ref="hazelcastInstance" />

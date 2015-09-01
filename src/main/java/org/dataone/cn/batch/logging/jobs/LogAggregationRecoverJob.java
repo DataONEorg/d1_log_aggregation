@@ -17,35 +17,34 @@
  */
 package org.dataone.cn.batch.logging.jobs;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.dataone.configuration.Settings;
-import org.dataone.service.exceptions.ServiceFailure;
-import org.dataone.service.types.v1.NodeReference;
-import org.quartz.DisallowConcurrentExecution;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServer;
-import org.apache.solr.client.solrj.impl.CommonsHttpSolrServer;
+import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.apache.solr.client.solrj.response.QueryResponse;
-import org.dataone.client.v2.itk.D1Client;
 import org.dataone.client.v2.CNode;
+import org.dataone.client.v2.itk.D1Client;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.cn.ldap.ProcessingState;
+import org.dataone.configuration.Settings;
 import org.dataone.service.cn.impl.v2.NodeRegistryService;
-
+import org.dataone.service.exceptions.ServiceFailure;
+import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v2.Node;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.dataone.solr.client.solrj.impl.CommonsHttpClientProtocolRegistry;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
+import org.quartz.DisallowConcurrentExecution;
+import org.quartz.Job;
+import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
 
 /**
  * Quartz Job that starts off the recovery of log entries from a from a CN
@@ -69,7 +68,7 @@ import org.joda.time.DateTimeZone;
 public class LogAggregationRecoverJob implements Job {
 
     String recoveryQuery;
-    SolrServer localhostSolrServer;
+    HttpSolrClient localhostSolrServer;
     Date latestRecoverableDate;
 
     @Override
@@ -80,7 +79,7 @@ public class LogAggregationRecoverJob implements Job {
         Log logger = LogFactory.getLog(LogAggregationRecoverJob.class);
         boolean foundRecoveringNode = false;
         String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
-        
+
         // this will initialize the https protocol of the solrserver client
         // to read and send the x509 certificate
         try {
@@ -88,109 +87,131 @@ public class LogAggregationRecoverJob implements Job {
         } catch (Exception ex) {
             ex.printStackTrace();
             logger.error(ex.getMessage());
-        } 
+        }
         NodeReference localNodeReference = new NodeReference();
         localNodeReference.setValue(localCnIdentifier);
-        SimpleDateFormat format =
-                new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
-        
+        SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
+
         JobExecutionException jex = null;
         NodeRegistryService nodeRegistryService = new NodeRegistryService();
         NodeAccess nodeAccess = new NodeAccess();
-        boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
+        boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString(
+                "LogAggregator.active"));
         try {
 
             if (activateJob) {
-                Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size");
+                Integer batchSize = Settings.getConfiguration().getInt(
+                        "LogAggregator.logRecords_batch_size");
                 logger.info(localCnIdentifier + " executing with batch size " + batchSize);
                 String recoveryCnUrl = null;
 
                 do {
-                    Map<NodeReference, Map<String, String>> recoveryMap = nodeAccess.getCnLoggingStatus();
+                    Map<NodeReference, Map<String, String>> recoveryMap = nodeAccess
+                            .getCnLoggingStatus();
                     for (NodeReference cnReference : recoveryMap.keySet()) {
                         if (!cnReference.equals(localNodeReference)) {
                             Map<String, String> cnMap = recoveryMap.get(cnReference);
                             if ((cnMap != null) && !cnMap.isEmpty()) {
                                 Node d1Node = nodeRegistryService.getNode(cnReference);
                                 String baseUrl = d1Node.getBaseURL();
-                                logger.debug(localCnIdentifier +  " found " + cnReference.getValue() + " with a state of " + cnMap.get(NodeAccess.PROCESSING_STATE));
-                                ProcessingState logProcessingState = ProcessingState.convert(cnMap.get(NodeAccess.PROCESSING_STATE));
+                                logger.debug(localCnIdentifier + " found " + cnReference.getValue()
+                                        + " with a state of "
+                                        + cnMap.get(NodeAccess.PROCESSING_STATE));
+                                ProcessingState logProcessingState = ProcessingState.convert(cnMap
+                                        .get(NodeAccess.PROCESSING_STATE));
                                 switch (logProcessingState) {
-                                    case Active: {
-                                        // So it is true, a CN is running logAggregation
-                                        // this localhost has never run before, but another CN is running
-                                        // we need to replicate all logs from other CN to this one
+                                case Active: {
+                                    // So it is true, a CN is running logAggregation
+                                    // this localhost has never run before, but another CN is running
+                                    // we need to replicate all logs from other CN to this one
 
-                                        recoveryCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
-                                        recoveryCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-                                        // a machine may reportedly be active, but it actually offline becuase of a
-                                        // system failure. Check to make certain that the system is really active
-                                        // ping the damn thing to make certain it responds before we break!
+                                    recoveryCnUrl = baseUrl
+                                            .substring(0, baseUrl.lastIndexOf("/cn"));
+                                    recoveryCnUrl += Settings.getConfiguration().getString(
+                                            "LogAggregator.solrUrlPath");
+                                    // a machine may reportedly be active, but it actually offline becuase of a
+                                    // system failure. Check to make certain that the system is really active
+                                    // ping the damn thing to make certain it responds before we break!
+                                    CNode cnode = D1Client.getCN(baseUrl);
+                                    try {
+                                        cnode.ping();
+                                    } catch (Exception e) {
+                                        // not active, node is down
+                                        recoveryCnUrl = null;
+                                    }
+
+                                    break;
+                                }
+                                case Recovery: {
+                                    // Don't bother with this logic if an Active CN has been found
+                                    if (recoveryCnUrl == null) {
+                                        // a machine may reportedly be active, but it is actually offline because of a
+                                        // system failure. Check to make certain that the system is indeed online
+                                        // ping it
                                         CNode cnode = D1Client.getCN(baseUrl);
                                         try {
                                             cnode.ping();
-                                        } catch (Exception e) {
-                                            // not active, node is down
-                                            recoveryCnUrl = null;
-                                        }
+                                            String recoveringCnUrl = baseUrl.substring(0,
+                                                    baseUrl.lastIndexOf("/cn"));
+                                            recoveringCnUrl += Settings.getConfiguration()
+                                                    .getString("LogAggregator.solrUrlPath");
 
-                                        break;
-                                    }
-                                    case Recovery: {
-                                        // Don't bother with this logic if an Active CN has been found
-                                        if (recoveryCnUrl == null) {
-                                            // a machine may reportedly be active, but it is actually offline because of a
-                                            // system failure. Check to make certain that the system is indeed online
-                                            // ping it
-                                            CNode cnode = D1Client.getCN(baseUrl);
-                                            try {
-                                                cnode.ping();
-                                                String recoveringCnUrl = baseUrl.substring(0, baseUrl.lastIndexOf("/cn"));
-                                                recoveringCnUrl += Settings.getConfiguration().getString("LogAggregator.solrUrlPath");
-                                                
-                                                CommonsHttpSolrServer recoveringSolrServer = new CommonsHttpSolrServer(recoveringCnUrl);
-                                                recoveringSolrServer.setConnectionTimeout(30000);
-                                                recoveringSolrServer.setSoTimeout(30000);
-                                                recoveringSolrServer.setMaxRetries(1);
-                                                // initialize it incase the node in recovery has an empty logEntryList
-                                                Date cnRecoveryDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
-                                                SolrQuery queryParams = new SolrQuery();
-                                                queryParams.setQuery("dateAggregated:[* TO NOW]");
-                                                queryParams.setSortField("dateAggregated", SolrQuery.ORDER.desc);
-                                                queryParams.setStart(0);
-                                                queryParams.setRows(1);
-                                                // get the last date that the recoverying node knows about
-                                                QueryResponse queryResponse = recoveringSolrServer.query(queryParams);
-                                                List<LogEntrySolrItem> logEntryList = queryResponse.getBeans(LogEntrySolrItem.class);
-                                                if (!logEntryList.isEmpty()) {
-                                                    // there should only be one
-                                                    LogEntrySolrItem firstSolrItem = logEntryList.get(0);
-                                                    DateTime dt = new DateTime(firstSolrItem.getDateAggregated());
+                                            HttpSolrClient recoveringSolrServer = new HttpSolrClient(
+                                                    recoveringCnUrl);
+                                            recoveringSolrServer.setConnectionTimeout(30000);
+                                            recoveringSolrServer.setSoTimeout(30000);
+                                            recoveringSolrServer.setMaxRetries(1);
+                                            // initialize it incase the node in recovery has an empty logEntryList
+                                            Date cnRecoveryDate = DateTimeMarshaller
+                                                    .deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
+                                            SolrQuery queryParams = new SolrQuery();
+                                            queryParams.setQuery("dateAggregated:[* TO NOW]");
+                                            queryParams.addSort("dateAggregated",
+                                                    SolrQuery.ORDER.desc);
+                                            queryParams.setStart(0);
+                                            queryParams.setRows(1);
+                                            // get the last date that the recoverying node knows about
+                                            QueryResponse queryResponse = recoveringSolrServer
+                                                    .query(queryParams);
+                                            List<LogEntrySolrItem> logEntryList = queryResponse
+                                                    .getBeans(LogEntrySolrItem.class);
+                                            if (!logEntryList.isEmpty()) {
+                                                // there should only be one
+                                                LogEntrySolrItem firstSolrItem = logEntryList
+                                                        .get(0);
+                                                DateTime dt = new DateTime(
+                                                        firstSolrItem.getDateAggregated());
 
-                                                    DateTime dtUTC = dt.withZone(DateTimeZone.UTC);
-                                                    cnRecoveryDate = dtUTC.toDate();
+                                                DateTime dtUTC = dt.withZone(DateTimeZone.UTC);
+                                                cnRecoveryDate = dtUTC.toDate();
 
-                                                }
-                                                logger.debug(localCnIdentifier + " May recover from " + recoveringCnUrl + " from date " + format.format(cnRecoveryDate) + " if it is after " + format.format(latestRecoverableDate));
-                                                // One of the nodes is actively being recovered
-                                                // make certain that the last time the other CN ran
-                                                // is after the date when this cn last ran
-                                                // if all CN's are in recovery, then the one with the
-                                                // latest date should not attempt recovery from the others
-
-                                                if (cnRecoveryDate.after(latestRecoverableDate)) {
-                                                    foundRecoveringNode = true;
-                                                    logger.debug(localCnIdentifier + " Found Recovering Node");
-                                                }
-                                            } catch (Exception e) {
-                                                e.printStackTrace();
-                                                // not active, node is down
-                                                logger.error(localCnIdentifier +  " Node must be down " + e.getMessage());
-                                                foundRecoveringNode = false;
                                             }
+                                            logger.debug(localCnIdentifier + " May recover from "
+                                                    + recoveringCnUrl + " from date "
+                                                    + format.format(cnRecoveryDate)
+                                                    + " if it is after "
+                                                    + format.format(latestRecoverableDate));
+                                            // One of the nodes is actively being recovered
+                                            // make certain that the last time the other CN ran
+                                            // is after the date when this cn last ran
+                                            // if all CN's are in recovery, then the one with the
+                                            // latest date should not attempt recovery from the others
 
+                                            if (cnRecoveryDate.after(latestRecoverableDate)) {
+                                                foundRecoveringNode = true;
+                                                logger.debug(localCnIdentifier
+                                                        + " Found Recovering Node");
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            // not active, node is down
+                                            logger.error(localCnIdentifier + " Node must be down "
+                                                    + e.getMessage());
+                                            foundRecoveringNode = false;
                                         }
+
                                     }
+                                }
                                 }
                             }
                         }
@@ -207,13 +228,15 @@ public class LogAggregationRecoverJob implements Job {
                     // in jex logic, there is a sleep defined.
                     jex = new JobExecutionException();
                     jex.refireImmediately();
-                    throw new Exception(localCnIdentifier +  " Unable to complete recovery because no nodes are available for recovery process");
+                    throw new Exception(
+                            localCnIdentifier
+                                    + " Unable to complete recovery because no nodes are available for recovery process");
                 }
                 // It would be nice to be able to inject the SolrServer. and implement
                 // a mock SolrServer for testing
                 // CommonsHttpSolrServer is serializable and could be passed in...
                 // But we have to change the URL based on the servers available
-                CommonsHttpSolrServer recoverySolrServer = new CommonsHttpSolrServer(recoveryCnUrl);
+                HttpSolrClient recoverySolrServer = new HttpSolrClient(recoveryCnUrl);
                 recoverySolrServer.setConnectionTimeout(30000);
                 recoverySolrServer.setSoTimeout(30000);
                 recoverySolrServer.setMaxRetries(1);
@@ -222,9 +245,10 @@ public class LogAggregationRecoverJob implements Job {
 
                 Integer start = 0;
                 long total = 0;
-                logger.info(localCnIdentifier +  " Starting recovery from " + recoveryCnUrl);
+                logger.info(localCnIdentifier + " Starting recovery from " + recoveryCnUrl);
                 Date lastLogAggregatedDate = nodeAccess.getLogLastAggregated(localNodeReference);
-                Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
+                Date initializedDate = DateTimeMarshaller
+                        .deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
                 Boolean assignDate = false;
                 // only assign the lastLogAggregated Date if logAggregation
                 // has never run successfully before and this
@@ -242,7 +266,7 @@ public class LogAggregationRecoverJob implements Job {
                     // find out what the last log record is to get the date from it for recovery purposes
                     SolrQuery queryParams = new SolrQuery();
                     queryParams.setQuery(recoveryQuery);
-                    queryParams.setSortField("dateAggregated", SolrQuery.ORDER.asc);
+                    queryParams.addSort("dateAggregated", SolrQuery.ORDER.asc);
                     queryParams.setStart(start);
                     queryParams.setRows(batchSize);
 
@@ -265,7 +289,7 @@ public class LogAggregationRecoverJob implements Job {
                 if (assignDate) {
                     nodeAccess.setLogLastAggregated(localNodeReference, lastLogAggregatedDate);
                 }
-                logger.info(localCnIdentifier +  " LogAggregation is fully Recovered");
+                logger.info(localCnIdentifier + " LogAggregation is fully Recovered");
             }
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -291,7 +315,9 @@ public class LogAggregationRecoverJob implements Job {
                 Thread.sleep(300000L);
                 throw jex;
             } catch (InterruptedException ex) {
-                logger.warn(localCnIdentifier + " Tried to sleep before recovery job refires. But Interrupted :" + ex.getMessage());
+                logger.warn(localCnIdentifier
+                        + " Tried to sleep before recovery job refires. But Interrupted :"
+                        + ex.getMessage());
             }
         }
 
@@ -305,11 +331,11 @@ public class LogAggregationRecoverJob implements Job {
         this.recoveryQuery = recoveryQuery;
     }
 
-    public SolrServer getLocalhostSolrServer() {
+    public HttpSolrClient getLocalhostSolrServer() {
         return localhostSolrServer;
     }
 
-    public void setLocalhostSolrServer(SolrServer localhostSolrServer) {
+    public void setLocalhostSolrServer(HttpSolrClient localhostSolrServer) {
         this.localhostSolrServer = localhostSolrServer;
     }
 
