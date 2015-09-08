@@ -77,6 +77,7 @@ import com.hazelcast.core.AtomicNumber;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import com.hazelcast.core.ITopic;
+import org.dataone.cn.batch.logging.NodeHarvester;
 
 /**
  * A distributable and executable task that retrieves a list of LogEntry
@@ -93,6 +94,7 @@ import com.hazelcast.core.ITopic;
  */
 public class LogAggregatorTask implements Callable<Date>, Serializable {
 
+    NodeHarvester nodeHarvester;
     NodeReference d1NodeReference;
 
     private Integer queryTotalLimit = Settings.getConfiguration().getInt("LogAggregator.query_total_limit", 10000);
@@ -106,8 +108,9 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     
-    public LogAggregatorTask(NodeReference d1NodeReference) {
-        this.d1NodeReference = d1NodeReference;
+    public LogAggregatorTask(NodeHarvester d1NodeHarvester) {
+        this.nodeHarvester = d1NodeHarvester;
+        this.d1NodeReference = d1NodeHarvester.getNodeReference();
 
     }
     private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
@@ -206,8 +209,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             if (d1Node.getType().equals(NodeType.CN)) {
                 d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
             }
-            MNode mNode = D1Client.getMN(d1Node.getIdentifier());
-            NodeCommunication nodeComm = NodeCommunication.getInstance(d1Node);
+
 
             // Create a service to determine location name from IP address that was obtained from a log entry
             String dbFilename = Settings.getConfiguration().getString(
@@ -261,12 +263,12 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
-                List<LogEntry> readQueue = new ArrayList<LogEntry>();
+                List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>();
                 tryAgain = false;
                 // read upto a 1000 objects (the default, but it can be overwritten)
                 // from ListObjects and process before retrieving more
                 try {
-                    readQueue = nodeComm.retrieve(d1Node.getIdentifier(), logQueryStack, queryTotalLimit);
+                    logEntrySolrItemList = nodeHarvester.harvest(logQueryStack, queryTotalLimit);
                     queryFailures = 0;
                 } catch (QueryLimitException e) {
                     tryAgain = true;
@@ -287,23 +289,23 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     }
                     
                 }
-                if (readQueue != null && !readQueue.isEmpty()) {
-                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + readQueue.size() + " entries");
-                    List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>(queryTotalLimit);
-                    
+                if (logEntrySolrItemList != null && !logEntrySolrItemList.isEmpty()) {
+                    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " found " + logEntrySolrItemList.size() + " entries");
+
                     String nodeId = null;
                     // process the LogEntries into Solr Items that can be persisted
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
-                    for (LogEntry logEntry : readQueue) {
-                        if (logEntry.getDateLogged().after(mostRecentLoggedDate)) {
-                            mostRecentLoggedDate = logEntry.getDateLogged();
+                    for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
+                        if (solrItem.getDateLogged().after(mostRecentLoggedDate)) {
+                            mostRecentLoggedDate = solrItem.getDateLogged();
                         }
                         
                         Date now = new Date();
                         Date dateAggregated = now;
-                        LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntry);
-                        SystemMetadata systemMetadata = systemMetadataMap.get(logEntry.getIdentifier());
+                        Identifier pid = new Identifier();
+                        pid.setValue(solrItem.getPid());
+                        SystemMetadata systemMetadata = systemMetadataMap.get(pid);
                         
                         // overwrite whatever the logEntry tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
@@ -311,6 +313,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         solrItem.setNodeIdentifier(nodeId);
                         solrItem.setDateAggregated(now);
                         solrItem.setDateUpdated(initializedDate);
+                        
+   
             			/*
             			 * Fill in the solrItem fields for fields that are either obtained
             			 * from systemMetadata (i.e. formatId, size for a given pid) or are
@@ -342,7 +346,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         /* Use the Member Node identifier combined with entryId for the Solr unique key. This natural key should be 
                          * globally unique, but also ensure that re-harvesting will not add duplicate records.
                          */
-                        String id = nodeId + "." + logEntry.getEntryId();
+                        String id = nodeId + "." + solrItem.getEntryId();
                         solrItem.setId(id);
                         logEntrySolrItemList.add(solrItem);
                     }
