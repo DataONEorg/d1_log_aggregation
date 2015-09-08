@@ -39,10 +39,13 @@ import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
 import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
+import org.dataone.cn.batch.logging.NodeHarvesterFactory;
+import org.dataone.cn.batch.logging.NodeHarvester;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
 import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.service.cn.impl.v2.NodeRegistryService;
+import org.dataone.service.types.v2.Node;
 import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
@@ -104,11 +107,13 @@ public class LogAggregationHarvestJob implements Job {
                     // aggregateLogs is true, then set to false
                     NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(nodeReference.getValue());
                     NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
+             
                     if ( nodeAccess.getAggregateLogs(nodeReference)) {
                         nodeAccess.setAggregateLogs(nodeReference, false);
-
+                        Node node = nodeAccess.getApprovedNode(nodeIdentifier);
+                        NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
                         
-                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeReference);
+                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);
                         // If the node reference is the local machine nodId, then
                         // do not submit to hazelcast for distribution
                         // Rather, execute it on the local machine
