@@ -137,8 +137,8 @@ public class MNCommunication implements NodeHarvester {
 
 
                 if ((logList != null)
-                        && (logList.getCount() > 0)
                         && (logList.getLogEntryList() != null)
+                        && (logList.getCount() > 0)
                         && (!logList.getLogEntryList().isEmpty())) {
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " harvested start " + format.format(logQueryDateRange.getFromDate()) + " end " + format.format(logQueryDateRange.getToDate()));
                     logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " log harvested start#=" + logList.getStart() + " count=" + logList.getCount() + " total=" + logList.getTotal());
@@ -151,7 +151,9 @@ public class MNCommunication implements NodeHarvester {
                     }
                     
                 }
-                
+                if ((logList.getLogEntryList() == null)) {
+                    logger.error("How did we get a returned object that has a null LogEntry List? Creating a new Log creates an empty array list");
+                }
             } while ((logList != null) && (logList.getCount() > 0) && (start < total));
         } catch (EmptyStackException ex) {
             throw ex;
