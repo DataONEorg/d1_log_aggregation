@@ -147,6 +147,9 @@ public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunica
                     }
                 }
             } while ((logList != null) && (logList.getCount() > 0) && (start < total));
+        } catch (NullPointerException ex) {
+            ex.printStackTrace();
+            throw ex;
         } catch (EmptyStackException ex) {
             throw ex;
         }
