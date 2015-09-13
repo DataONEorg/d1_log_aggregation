@@ -6,6 +6,7 @@
 
 package org.dataone.cn.batch.logging;
 
+import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Stack;
@@ -23,7 +24,7 @@ import org.dataone.service.types.v1.NodeReference;
  *
  * @author waltz
  */
-public interface NodeHarvester {
+public interface NodeHarvester extends Serializable {
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
         public List<LogEntrySolrItem> harvest(Stack<LogQueryDateRange> logQueryStack, Integer queryTotalLimit) throws ServiceFailure, NotAuthorized, InvalidRequest, NotImplemented, InvalidToken, QueryLimitException ;
         public NodeReference getNodeReference();

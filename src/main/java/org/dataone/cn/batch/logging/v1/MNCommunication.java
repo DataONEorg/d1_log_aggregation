@@ -1,5 +1,6 @@
 package org.dataone.cn.batch.logging.v1;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.EmptyStackException;
@@ -29,6 +30,7 @@ import org.dataone.service.types.v1.LogEntry;
 
 public class MNCommunication implements NodeHarvester {
     public Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size", 1000);
+    private static final long serialVersionUID = 10000001;
 	 /**
      * performs the retrieval of the log records  from a DataONE node.
      * It retrieves the list in batches and should be called iteratively

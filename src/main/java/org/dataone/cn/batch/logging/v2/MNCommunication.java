@@ -26,6 +26,7 @@ import org.dataone.service.types.v2.LogEntry;
 
 public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunication {
 
+    private static final long serialVersionUID = 10000002;
     public MNCommunication(NodeReference d1NodeReference) {
         super(d1NodeReference);
     }
