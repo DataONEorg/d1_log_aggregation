@@ -110,7 +110,7 @@ public class LogAggregationHarvestJob implements Job {
              
                     if ( nodeAccess.getAggregateLogs(nodeReference)) {
                         nodeAccess.setAggregateLogs(nodeReference, false);
-                        Node node = nodeAccess.getApprovedNode(nodeReference);
+                        Node node = nodeRegistryService.getApprovedNode(nodeReference);
                         NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
                         
                         LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);
@@ -166,6 +166,7 @@ public class LogAggregationHarvestJob implements Job {
                 }
             }
         } catch (Exception ex) {
+            ex.printStackTrace();
             logger.error("Job-" + nodeIdentifier +  " - died: " + ex.getMessage());
             jex = new JobExecutionException();
             jex.setStackTrace(ex.getStackTrace());
