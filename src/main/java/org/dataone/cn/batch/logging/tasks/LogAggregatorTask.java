@@ -348,7 +348,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                          */
                         String id = nodeId + "." + solrItem.getEntryId();
                         solrItem.setId(id);
-                        logEntrySolrItemList.add(solrItem);
                     }
 
                     // publish 100 at a time, do not overwhelm the
@@ -366,8 +365,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
                         try {
                             // Simple way to throttle publishing of messages
-                            // thread should sleep for 500MS
-                            Thread.sleep(500L);
+                            // thread should sleep for 250MS
+                            Thread.sleep(250L);
                         } catch (InterruptedException ex) {
                             logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
                         }
