@@ -141,6 +141,7 @@ public class LogAggregationHarvestJob implements Job {
                                 Thread.sleep(5000L);
                             } else {
                                 logger.error("Job-" + nodeIdentifier +  " ExecutionException- " + nodeIdentifier + "-" + ex.getMessage());
+                                ex.printStackTrace();
                             }
                         }
                         // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
