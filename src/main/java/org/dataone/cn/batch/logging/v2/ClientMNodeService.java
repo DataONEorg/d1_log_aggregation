@@ -60,8 +60,7 @@ public class ClientMNodeService {
                 
                 Node node = nodeRegistryService.getApprovedNode(mnNodeReference);
                 
-                X509Session x509Session = HttpUtils.selectSession(ClientIdentityManager.getCurrentIdentity().getValue());
-                HttpMultipartRestClient multipartRestClient = new HttpMultipartRestClient(x509Session);
+                HttpMultipartRestClient multipartRestClient = new HttpMultipartRestClient();
                 if (node.getType().compareTo(NodeType.MN) == 0) {
                     mNode = new MultipartMNode (multipartRestClient, node.getBaseURL());
                 } else {
