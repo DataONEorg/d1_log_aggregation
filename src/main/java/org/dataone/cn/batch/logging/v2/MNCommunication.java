@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Stack;
 
 import org.apache.log4j.Logger;
-import org.dataone.client.v2.itk.D1Client;
 import org.dataone.client.v2.MNode;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
@@ -44,7 +43,7 @@ public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunica
             throws ServiceFailure, NotAuthorized, InvalidRequest, NotImplemented, InvalidToken, QueryLimitException {
         // logger is not  be serializable, but no need to make it transient imo
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
-        List<LogEntrySolrItem> writeQueue = new ArrayList<LogEntrySolrItem>();
+        List<LogEntrySolrItem> writeQueue = new ArrayList<>();
         try {
             LogQueryDateRange logQueryDateRange = logQueryStack.pop();
 
@@ -60,7 +59,7 @@ public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunica
                     logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
                     throw new EmptyStackException();
                 }
-                MNode mNode = D1Client.getMN(d1NodeReference);
+                MNode mNode = ClientMNodeService.getInstance().getClientMNode(d1NodeReference);
                 // always execute for the first run (for start = 0)
                 // otherwise skip because when the start is equal or greater
                 // then total, then all objects have been harvested

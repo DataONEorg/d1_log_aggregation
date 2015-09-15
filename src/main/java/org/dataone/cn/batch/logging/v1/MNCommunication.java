@@ -1,6 +1,5 @@
 package org.dataone.cn.batch.logging.v1;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.EmptyStackException;
@@ -9,7 +8,6 @@ import java.util.Stack;
 
 
 import org.apache.log4j.Logger;
-import org.dataone.client.v1.itk.D1Client;
 import org.dataone.client.v1.MNode;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
@@ -63,7 +61,7 @@ public class MNCommunication implements NodeHarvester {
                     logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
                     throw new EmptyStackException();
                 }
-                MNode mNode = D1Client.getMN(d1NodeReference);
+                MNode mNode = ClientMNodeService.getInstance().getClientMNode(d1NodeReference);
 				// always execute for the first run (for start = 0)
                 // otherwise skip because when the start is equal or greater
                 // then total, then all objects have been harvested
