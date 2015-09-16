@@ -205,12 +205,6 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             LogQueryDateRange initialLogQueryDateRange = new LogQueryDateRange(lastHarvestDateTime.toDate(), endDateTime.toDate());
             logQueryStack.push(initialLogQueryDateRange);
             
-            String d1NodeBaseUrl = d1Node.getBaseURL();
-            if (d1Node.getType().equals(NodeType.CN)) {
-                d1NodeBaseUrl = Settings.getConfiguration().getString("LogAggregator.cn_base_url");
-            }
-
-
             // Create a service to determine location name from IP address that was obtained from a log entry
             String dbFilename = Settings.getConfiguration().getString(
 					"LogAggregator.geoIPdbName");
@@ -261,7 +255,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 				throw new ExecutionException(ex);
 			}
             
-            logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval " + d1NodeBaseUrl + " From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
+            logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
                 List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>();
                 tryAgain = false;
