@@ -14,6 +14,7 @@ import org.dataone.client.auth.ClientIdentityManager;
 import org.dataone.client.auth.X509Session;
 import org.dataone.client.exception.ClientSideException;
 import org.dataone.client.rest.HttpMultipartRestClient;
+import org.dataone.client.rest.MultipartRestClient;
 import org.dataone.client.utils.HttpUtils;
 import org.dataone.client.v2.MNode;
 import org.dataone.client.v2.impl.MultipartMNode;
@@ -60,7 +61,7 @@ public class ClientMNodeService {
                 
                 Node node = nodeRegistryService.getApprovedNode(mnNodeReference);
                 
-                HttpMultipartRestClient multipartRestClient = new HttpMultipartRestClient();
+                MultipartRestClient multipartRestClient = new HttpMultipartRestClient();
                 if (node.getType().compareTo(NodeType.MN) == 0) {
                     mNode = new MultipartMNode (multipartRestClient, node.getBaseURL());
                 } else {
