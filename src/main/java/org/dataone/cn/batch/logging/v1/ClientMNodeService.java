@@ -35,7 +35,7 @@ public class ClientMNodeService {
 
     private Map<NodeReference, MNode> clientPool = new HashMap<>();
     static ClientMNodeService nodeClientSingleton = null;
-    private static final String CN_METACAT_LOG_V1_PATH = "/metacat/d1/cn/v1/log";
+    private static final String CN_METACAT_PATH = "/metacat/d1/cn";
     NodeRegistryService nodeRegistryService = new NodeRegistryService();
 
     private ClientMNodeService() {
@@ -71,7 +71,7 @@ public class ClientMNodeService {
                     String cnBaseUrl = node.getBaseURL();
                     StringBuilder cnMetacatLogUrl = new StringBuilder(cnBaseUrl
                             .substring(0, cnBaseUrl.lastIndexOf("/cn")));
-                    cnMetacatLogUrl.append(CN_METACAT_LOG_V1_PATH);
+                    cnMetacatLogUrl.append(CN_METACAT_PATH);
                     mNode = new MultipartMNode(multipartRestClient, cnMetacatLogUrl.toString());
                 }
             } catch (ServiceFailure ex) {
