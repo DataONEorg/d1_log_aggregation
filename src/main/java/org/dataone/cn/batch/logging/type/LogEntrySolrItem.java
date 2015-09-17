@@ -41,6 +41,7 @@ import ch.hsr.geohash.GeoHash;
 
 import java.util.Date;
 import java.util.List;
+import org.dataone.cn.batch.logging.GeoIPService.GeoIpLocation;
 import org.dataone.service.exceptions.ServiceFailure;
 
 /**
@@ -59,6 +60,8 @@ public class LogEntrySolrItem implements Serializable {
     private final static String DATAONE_VERSION_1 = "v1";
     private final static String DATAONE_VERSION_2 = "v2";
 
+    private final static int geohashLength = 9;
+    
     @Field("id")
     String id;
 
@@ -252,7 +255,7 @@ public class LogEntrySolrItem implements Serializable {
 		// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
         // at different resolutions, or for searching/filtering
         // Length of geohash to retrieve from service
-        int geohashLength = 9;
+        
 
 		// Set the geographic location attributes determined from the IP address
         // This will be stored in the Solr index as a geohash and as lat, long
@@ -260,15 +263,15 @@ public class LogEntrySolrItem implements Serializable {
         if (geoIPsvc != null && this.getIpAddress() != null) {
 			// Set the geographic location attributes determined from the IP
             // address
-            geoIPsvc.initLocation(this.getIpAddress());
+            GeoIpLocation geoIpLocation = geoIPsvc.getLocation(this.getIpAddress());
             // Add the location attributes to the current Solr document
-            this.setCountry(geoIPsvc.getCountry());
-            this.setRegion(geoIPsvc.getRegion());
-            this.setCity(geoIPsvc.getCity());
+            this.setCountry(geoIpLocation.getCountry());
+            this.setRegion(geoIpLocation.getRegion());
+            this.setCity(geoIpLocation.getCity());
 			// Calculate the geohash values based on the lat, long returned from
             // the GeoIP service.
-            geohashLat = geoIPsvc.getLatitude();
-            geohashLong = geoIPsvc.getLongitude();
+            geohashLat = geoIpLocation.getLatitude();
+            geohashLong = geoIpLocation.getLongitude();
             String location = String.format("%.4f", geohashLat) + ", "
                     + String.format("%.4f", geohashLong);
             System.out.println("location: " + location);

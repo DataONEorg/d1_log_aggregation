@@ -42,8 +42,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 import org.apache.log4j.Logger;
-import org.dataone.client.v2.MNode;
-import org.dataone.client.v2.itk.D1Client;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
@@ -64,8 +62,6 @@ import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.NodeReference;
-import org.dataone.service.types.v1.NodeType;
-import org.dataone.service.types.v2.LogEntry;
 import org.dataone.service.types.v2.Node;
 import org.dataone.service.types.v2.SystemMetadata;
 import org.dataone.service.util.DateTimeMarshaller;
@@ -94,6 +90,7 @@ import org.dataone.cn.batch.logging.NodeHarvester;
  */
 public class LogAggregatorTask implements Callable<Date>, Serializable {
 
+    private static final long serialVersionUID = 10000000;
     NodeHarvester nodeHarvester;
     NodeReference d1NodeReference;
 
