@@ -23,10 +23,10 @@ import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v2.Log;
 import org.dataone.service.types.v2.LogEntry;
 
-public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunication {
+public class NodeCommunication extends org.dataone.cn.batch.logging.v1.NodeCommunication {
 
     private static final long serialVersionUID = 10000002;
-    public MNCommunication(NodeReference d1NodeReference) {
+    public NodeCommunication(NodeReference d1NodeReference) {
         super(d1NodeReference);
     }
 
@@ -59,7 +59,7 @@ public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunica
                     logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
                     throw new EmptyStackException();
                 }
-                MNode mNode = ClientMNodeService.getInstance().getClientMNode(d1NodeReference);
+                MNode mNode = ClientNodeService.getInstance().getClientMNode(d1NodeReference);
                 // always execute for the first run (for start = 0)
                 // otherwise skip because when the start is equal or greater
                 // then total, then all objects have been harvested
@@ -68,7 +68,7 @@ public class MNCommunication extends org.dataone.cn.batch.logging.v1.MNCommunica
                 // shortcut of not needing to perform paging
                 if (start == 0) {
                     try {
-                        logList = mNode.getLogRecords(null, logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
+                        logList = mNode.getLogRecords(null,logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
                     } catch (NotAuthorized e) {
                         logQueryStack.push(logQueryDateRange);
                         throw e;
