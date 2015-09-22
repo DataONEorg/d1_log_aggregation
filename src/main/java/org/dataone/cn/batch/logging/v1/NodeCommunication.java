@@ -26,7 +26,7 @@ import org.dataone.service.types.v1.Log;
 import org.dataone.service.types.v1.LogEntry;
 
 
-public class MNCommunication implements NodeHarvester {
+public class NodeCommunication implements NodeHarvester {
     public Integer batchSize = Settings.getConfiguration().getInt("LogAggregator.logRecords_batch_size", 1000);
     private static final long serialVersionUID = 10000001;
 	 /**
@@ -38,7 +38,7 @@ public class MNCommunication implements NodeHarvester {
      * @return List<LogEntry>
      */
     protected NodeReference d1NodeReference;
-    public MNCommunication (NodeReference d1NodeReference) {
+    public NodeCommunication (NodeReference d1NodeReference) {
         this.d1NodeReference = d1NodeReference;
     }
     public List<LogEntrySolrItem> harvest(Stack<LogQueryDateRange> logQueryStack, Integer queryTotalLimit) throws ServiceFailure, NotAuthorized, InvalidRequest, NotImplemented, InvalidToken, QueryLimitException 
@@ -61,7 +61,7 @@ public class MNCommunication implements NodeHarvester {
                     logger.warn("LogAggregatorTask-" + d1NodeReference.getValue() + "QueryStack is Emptied because LogAggregation has been de-activated");
                     throw new EmptyStackException();
                 }
-                MNode mNode = ClientMNodeService.getInstance().getClientMNode(d1NodeReference);
+                MNode mNode = ClientNodeService.getInstance().getClientMNode(d1NodeReference);
 				// always execute for the first run (for start = 0)
                 // otherwise skip because when the start is equal or greater
                 // then total, then all objects have been harvested
@@ -70,7 +70,7 @@ public class MNCommunication implements NodeHarvester {
                 // shortcut of not needing to perform paging
                 if (start == 0) {
                     try {
-                        logList = mNode.getLogRecords(null, logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
+                        logList = mNode.getLogRecords(logQueryDateRange.getFromDate(), logQueryDateRange.getToDate(), null, null, 0, 0);
                     } catch (NotAuthorized e) {
                         logQueryStack.push(logQueryDateRange);
                         throw e;
