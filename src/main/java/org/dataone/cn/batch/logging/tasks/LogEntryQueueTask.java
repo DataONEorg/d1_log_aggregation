@@ -37,7 +37,6 @@ import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import com.hazelcast.core.HazelcastInstance;
 
 /**
  * Reads from the LogEvent tasks that need to be indexed.
@@ -56,15 +55,15 @@ public class LogEntryQueueTask implements Callable {
     // LogEntryQueueTask is itself a thread that must manage threads that
     // will actually perform the indexing
     private ThreadPoolTaskExecutor taskExecutor;
-    // The BlockingQueue indexLogEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
+    // The BlockingQueue logEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> logEntryQueue;
     SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     private Integer maxIndexBufferSize = new Integer(1000);
     // Manage this class.  Init will spawn off sequential threads of this class
     // and will do so until an exception is raised.
-    private HazelcastInstance hazelcast;
-    HttpSolrClient localhostSolrServer = null;
+
+    HttpSolrClient localhostSolrClient = null;
     long pollingQueueTimeout = 60L;
 
     public void init() {
@@ -85,7 +84,7 @@ public class LogEntryQueueTask implements Callable {
                 boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString(
                         "LogAggregator.active"));
                 if (activateJob) {
-                    indexLogTasks = indexLogEntryQueue.poll(pollingQueueTimeout, TimeUnit.SECONDS);
+                    indexLogTasks = logEntryQueue.poll(pollingQueueTimeout, TimeUnit.SECONDS);
                 } else {
                     // do not listen to Sync Object queue, just finish up with any active tasks
                     // clearning out the futures map
@@ -189,7 +188,7 @@ public class LogEntryQueueTask implements Callable {
         if ((taskExecutor.getPoolSize() + 1) < taskExecutor.getMaxPoolSize()) {
             List<LogEntrySolrItem> indexLogEntryBuffer = new ArrayList<LogEntrySolrItem>();
             indexLogEntryBuffer.addAll(logEntryBuffer);
-            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(localhostSolrServer,
+            LogEntryIndexTask logEntryIndexTask = new LogEntryIndexTask(localhostSolrClient,
                     indexLogEntryBuffer);
             FutureTask futureTask = new FutureTask(logEntryIndexTask);
             taskExecutor.execute(futureTask);
@@ -198,12 +197,12 @@ public class LogEntryQueueTask implements Callable {
         }
     }
 
-    public BlockingQueue getIndexLogEntryQueue() {
-        return indexLogEntryQueue;
+    public BlockingQueue getLogEntryQueue() {
+        return logEntryQueue;
     }
 
-    public void setIndexLogEntryQueue(BlockingQueue indexLogEntryQueue) {
-        this.indexLogEntryQueue = indexLogEntryQueue;
+    public void setLogEntryQueue(BlockingQueue logEntryQueue) {
+        this.logEntryQueue = logEntryQueue;
     }
 
     public Integer getMaxIndexBufferSize() {
@@ -222,20 +221,12 @@ public class LogEntryQueueTask implements Callable {
         this.taskExecutor = taskExecutor;
     }
 
-    public HazelcastInstance getHazelcast() {
-        return hazelcast;
+    public HttpSolrClient getLocalhostSolrClient() {
+        return localhostSolrClient;
     }
 
-    public void setHazelcast(HazelcastInstance hazelcast) {
-        this.hazelcast = hazelcast;
-    }
-
-    public HttpSolrClient getLocalhostSolrServer() {
-        return localhostSolrServer;
-    }
-
-    public void setLocalhostSolrServer(HttpSolrClient localhostSolrServer) {
-        this.localhostSolrServer = localhostSolrServer;
+    public void setLocalhostSolrClient(HttpSolrClient localhostSolrClient) {
+        this.localhostSolrClient = localhostSolrClient;
     }
 
     public long getPollingQueueTimeout() {
