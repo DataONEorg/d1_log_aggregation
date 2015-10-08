@@ -17,16 +17,8 @@
  */
 package org.dataone.cn.batch.logging.jobs;
 
-import com.hazelcast.core.DistributedTask;
-import com.hazelcast.core.Hazelcast;
-import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.IMap;
 import java.util.Date;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
@@ -37,24 +29,19 @@ import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
-import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
-import org.dataone.cn.batch.logging.LocalhostTaskExecutorFactory;
 import org.dataone.cn.batch.logging.NodeHarvesterFactory;
 import org.dataone.cn.batch.logging.NodeHarvester;
 import org.dataone.cn.batch.logging.NodeRegistryPool;
-import org.dataone.cn.hazelcast.HazelcastInstanceFactory;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.service.cn.impl.v2.NodeRegistryService;
 import org.dataone.service.types.v2.Node;
-import org.springframework.core.task.AsyncTaskExecutor;
 
 /**
- * Quartz Job that starts off the hazelcast distributed execution of harvesting logging from a Membernode
+ * Quartz Job that starts off the execution of harvesting logging for a CN or a Membernode
  *
- * It executes only for a given membernode, and while executing excludes via a lock any other execution of a job on that
+ * It executes only for a given node, and while executing excludes via a lock any other execution of a job on that
  * membernode
  *
- * If the node provided is the localhost coordinating node, then the task is executed locally
  *
  * Job may not be executed concurrently for a single membernode or coordinating node
  *
@@ -70,9 +57,8 @@ public class LogAggregationHarvestJob implements Job {
 
         // do not submit the localCNIdentifier to Hazelcast for execution
         // rather execute it locally on the machine
-
-        SimpleDateFormat format =
-                new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
+        SimpleDateFormat format
+                = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
         Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
         boolean nodeLocked = false;
         IMap<String, String> hzLogAggregatorLockMap = null;
@@ -80,98 +66,43 @@ public class LogAggregationHarvestJob implements Job {
         JobExecutionException jex = null;
         String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
         String lockName = nodeIdentifier;
-        logger.info("Job-" + nodeIdentifier +  " executing job");
+        logger.info("Job-" + nodeIdentifier + " executing job");
         try {
             boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
             if (activateJob) {
-                String hzLogAggregationLockMapString = Settings.getConfiguration().getString("dataone.hazelcast.logAggregatorLock");
-                String localCnIdentifier = Settings.getConfiguration().getString("cn.nodeId");
-
                 nodeReference.setValue(nodeIdentifier);
 
-                // Locking on the default instance.
-                // The locking mechanism can not be on the nodeList
-                // since synchronization uses locking on the nodeList
-                HazelcastInstance hazelcast = HazelcastInstanceFactory.getProcessingInstance();
-                hzLogAggregatorLockMap = hazelcast.getMap(hzLogAggregationLockMapString);
-                if (hzLogAggregatorLockMap.get(lockName) == null) {
-                    hzLogAggregatorLockMap.put(lockName, "1");
-                }
+                // look at the node, if the boolean property of the node
+                // aggregateLogs is true, then set to false
+                NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(nodeReference.getValue());
+                NodeAccess nodeAccess = nodeRegistryService.getNodeAccess();
 
+                if (nodeAccess.getAggregateLogs(nodeReference)) {
+                    nodeAccess.setAggregateLogs(nodeReference, false);
+                    Node node = nodeRegistryService.getApprovedNode(nodeReference);
+                    NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
 
-                
-                nodeLocked = hzLogAggregatorLockMap.tryLock(lockName, 500L, TimeUnit.MILLISECONDS);
-                Future future = null;
-                if (nodeLocked) {
-                    // look at the node, if the boolean property of the node
-                    // aggregateLogs is true, then set to false
-                    NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(nodeReference.getValue());
-                    NodeAccess nodeAccess =  nodeRegistryService.getNodeAccess();
-             
-                    if ( nodeAccess.getAggregateLogs(nodeReference)) {
-                        nodeAccess.setAggregateLogs(nodeReference, false);
-                        Node node = nodeRegistryService.getApprovedNode(nodeReference);
-                        NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
-                        
-                        LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);
-                        // If the node reference is the local machine nodId, then
-                        // do not submit to hazelcast for distribution
-                        // Rather, execute it on the local machine
-                        if (nodeReference.getValue().equals(localCnIdentifier)) {
-                            // Execute on localhost
-                            AsyncTaskExecutor executor = LocalhostTaskExecutorFactory.getSimpleTaskExecutor();
-                            future = executor.submit(harvestTask);
-                        } else {
-                            // Distribute the task to any hazelcast process cluster instance
-                            DistributedTask dtask = new DistributedTask((Callable<Date>) harvestTask);
-                            ExecutorService executor = hazelcast.getExecutorService();
-                            future = executor.submit(dtask);
-                        }
-                        Date lastProcessingCompletedDate = null;
-                        try {
-                            lastProcessingCompletedDate = (Date) future.get();
-                        } catch (InterruptedException ex) {
-                            logger.error(ex.getMessage());
-                        } catch (ExecutionException ex) {
-                            if (ex.getCause() instanceof ExecutionDisabledException) {
-                                logger.error("Job-" + nodeIdentifier +  " ExecutionDisabledException- " + nodeIdentifier + "-" + ex.getMessage() + "\n\tExecutionDisabledException: Will fire Job again\n");
-                                jex = new JobExecutionException();
-                                jex.setStackTrace(ex.getStackTrace());
-                                jex.setRefireImmediately(true);
-                                Thread.sleep(5000L);
-                            } else {
-                                logger.error("Job-" + nodeIdentifier +  " ExecutionException- " + nodeIdentifier + "-" + ex.getMessage());
-                                ex.printStackTrace();
-                            }
-                        }
-                        // if the lastProcessingCompletedDate has changed then it should be persisted, but where?
-                        // Does not need to be stored, maybe just printed?
-                        if (lastProcessingCompletedDate == null) {
-                            logger.info("Job-" + nodeIdentifier +  " Task returned with no completion date!");
-                        } else {
-                            logger.info("Job-" + nodeIdentifier +  " Task returned with a date of " + format.format(lastProcessingCompletedDate));
-                        }
-                        nodeAccess.setAggregateLogs(nodeReference, true);
-                        // think about putting the jobContext.getFireInstanceId() on a queue
-                        // or something so that all the entries for that job get submitted
-                        // to lucune solr in batch
+                    LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);
+                    Date lastProcessingCompletedDate = harvestTask.call();
+
+                    if (lastProcessingCompletedDate == null) {
+                        logger.info("Job-" + nodeIdentifier + " Task returned with no completion date!");
                     } else {
-                        logger.error("Job-" + nodeIdentifier +  " Unable to reset LDAP aggregateLogs boolean");
+                        logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
                     }
-                    hzLogAggregatorLockMap.unlock(lockName);
-                } else {
-                    // log this message, someone else has the lock
-
-                    logger.error("Job-" + nodeIdentifier +  "hazelcast locked");
-
+                    nodeAccess.setAggregateLogs(nodeReference, true);
                 }
+
+            } else {
+                logger.error("Job-" + nodeIdentifier + " Unable to reset LDAP aggregateLogs boolean");
             }
+
         } catch (Exception ex) {
             ex.printStackTrace();
-            logger.error("Job-" + nodeIdentifier +  " - died: " + ex.getMessage());
+            logger.error("Job-" + nodeIdentifier + " - died: " + ex.getMessage());
             jex = new JobExecutionException();
             jex.setStackTrace(ex.getStackTrace());
-        } 
+        }
         if (jex != null) {
             throw jex;
         }
