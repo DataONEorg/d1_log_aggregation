@@ -201,7 +201,7 @@ public class LogEntryQueueTask implements Callable {
         return logEntryQueue;
     }
 
-    public void setLogEntryQueue(BlockingQueue logEntryQueue) {
+    public void setLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> logEntryQueue) {
         this.logEntryQueue = logEntryQueue;
     }
 
