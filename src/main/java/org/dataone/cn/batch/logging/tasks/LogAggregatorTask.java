@@ -35,6 +35,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -103,7 +104,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
     }
     private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
-
+    private LogEntryQueueManager logEntryQueueManager = LogEntryQueueManager.getInstance();
     /**
      * Implement the Callable interface, retrieves logging information from a D1 Node and publishes a
      * List<LogEntrySolrItem> to a hazelcast topic
@@ -119,6 +120,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
         logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " Starting");
         LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
+        BlockingQueue<List<LogEntrySolrItem>> logEntryQueue = logEntryQueueManager.getLogEntryQueue();
         // COUNTER compliance of Event Log records is explained in the DataONE UsageStats document:
         //
         //     https://purl.dataone.org/architecture-dev/design/UsageStatistics.html#counter-compliance
@@ -340,14 +342,14 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
                         publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
 
-                        LogEntryQueueManager.getLogEntryQueue().put(logEntrySolrItemList);
+                        logEntryQueue.put(logEntrySolrItemList);
                         Boolean offeredLogEntry = false;
                         int offeredAttempts = 0;
 
                         while (!offeredLogEntry) {
 
                             try {
-                                offeredLogEntry = LogEntryQueueManager.getLogEntryQueue().offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
+                                offeredLogEntry = logEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
                             } catch (InterruptedException ex) {
                                 offeredLogEntry = false;
 

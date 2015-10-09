@@ -69,7 +69,7 @@ import static org.junit.Assert.*;
 @ContextConfiguration(locations = {"classpath:/org/dataone/configuration/logEntryQueueTaskContext.xml"})
 public class LogEntryQueueTaskTestCase {
 
-    private BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue;
+    private BlockingQueue<List<LogEntrySolrItem>> logEntryQueue;
     private org.springframework.core.io.Resource logEntryItemResource;
 
     private HazelcastInstance hzInstance;
@@ -84,10 +84,6 @@ public class LogEntryQueueTaskTestCase {
         Hazelcast.shutdownAll();
         HazelcastClient.shutdownAll();
     }
-    @Resource
-    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
-        this.indexLogEntryQueue = indexLogEntryQueue;
-    }
 
     @Resource
     public void setLogEntryItemResource(org.springframework.core.io.Resource logEntryItemResource) {
@@ -97,10 +93,7 @@ public class LogEntryQueueTaskTestCase {
     public void setHzInstance(HazelcastInstance hazelcastInstance) {
         this.hzInstance = hazelcastInstance;
     }
-    @Resource
-    public void setLogEntryQueueTask(LogEntryQueueTask logEntryQueueTask) {
-        this.logEntryQueueTask = logEntryQueueTask;
-    }
+
     @Resource
     public void setLogIndexingThreadPoolTaskExecutor(ThreadPoolTaskExecutor logIndexingThreadPoolTaskExecutor) {
         this.logIndexingThreadPoolTaskExecutor = logIndexingThreadPoolTaskExecutor;
@@ -112,6 +105,8 @@ public class LogEntryQueueTaskTestCase {
     @Before
     public void init() {
         try {
+            LogEntryQueueManager logEntryQueueManager = LogEntryQueueManager.getInstance();
+            logEntryQueue = logEntryQueueManager.getLogEntryQueue();
             LogEntry logEntryItem = TypeMarshaller.unmarshalTypeFromStream(LogEntry.class, logEntryItemResource.getInputStream());
             LogEntrySolrItem solrItem = new LogEntrySolrItem(logEntryItem);
             Date now = new Date();
@@ -122,7 +117,7 @@ public class LogEntryQueueTaskTestCase {
             solrItem.setId(id);
             List<LogEntrySolrItem> logEntryItemList = new ArrayList<LogEntrySolrItem>();
             logEntryItemList.add(solrItem);
-            indexLogEntryQueue.offer(logEntryItemList, 500L, TimeUnit.MILLISECONDS);
+            logEntryQueue.offer(logEntryItemList, 500L, TimeUnit.MILLISECONDS);
         } catch (IOException ex) {
             ex.printStackTrace();
         } catch (InstantiationException ex) {

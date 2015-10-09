@@ -37,10 +37,6 @@
         <constructor-arg type="java.lang.String" value="org/dataone/cn/batch/logging/samples/v2/logEntry-valid.xml"/>
     </bean>
 
-    <bean id="indexLogEntryQueue" class="java.util.concurrent.ArrayBlockingQueue">
-        <constructor-arg index="0"  value="50000" />
-        <constructor-arg index="1"  value="true" />
-    </bean>
 
      <bean name="rejectionExecutionHander" class="java.util.concurrent.ThreadPoolExecutor$AbortPolicy" />
 
@@ -61,7 +57,6 @@
     <bean id="logEntryQueueTask" class="org.dataone.cn.batch.logging.tasks.LogEntryQueueTask" init-method="init">
         <property name="hazelcast" ref="hazelcastInstance" />
         <property name="taskExecutor" ref="logIndexingThreadPoolTaskExecutor" />
-        <property name="indexLogEntryQueue" ref="indexLogEntryQueue" />
         <property name="localhostSolrServer" ref="localhostSolrServer" />
         <property name="pollingQueueTimeout" value="1" />
     </bean>
