@@ -79,7 +79,7 @@ public class LogAggregationHarvestJob implements Job {
 
                 if (nodeAccess.getAggregateLogs(nodeReference)) {
                     nodeAccess.setAggregateLogs(nodeReference, false);
-                    Node node = nodeRegistryService.getApprovedNode(nodeReference);
+                    Node node = nodeRegistryService.getNode(nodeReference);
                     NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
 
                     LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);

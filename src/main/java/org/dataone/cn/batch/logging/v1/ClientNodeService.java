@@ -57,7 +57,7 @@ public class ClientNodeService {
         } else {
             try {
 
-                Node node = nodeRegistryService.getApprovedNode(mnNodeReference);
+                Node node = nodeRegistryService.getNode(mnNodeReference);
 
                 MultipartRestClient multipartRestClient = new HttpMultipartRestClient();
                 if (node.getType().compareTo(NodeType.MN) == 0) {
@@ -74,16 +74,17 @@ public class ClientNodeService {
                     cnMetacatLogUrl.append(CN_METACAT_PATH);
                     mNode = new MultipartMNode(multipartRestClient, cnMetacatLogUrl.toString());
                 }
+                clientPool.put(mnNodeReference, mNode);
             } catch (ServiceFailure ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+               ex.printStackTrace();
             } catch (NotFound ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+                ex.printStackTrace();
             } catch (IOException ex) {
-
+                ex.printStackTrace();
             } catch (ClientSideException ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+                ex.printStackTrace();
             }
-            clientPool.put(mnNodeReference, mNode);
+            
 
         }
         return mNode;

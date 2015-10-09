@@ -8,14 +8,9 @@ package org.dataone.cn.batch.logging.v2;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.dataone.client.auth.ClientIdentityManager;
-import org.dataone.client.auth.X509Session;
 import org.dataone.client.exception.ClientSideException;
 import org.dataone.client.rest.HttpMultipartRestClient;
 import org.dataone.client.rest.MultipartRestClient;
-import org.dataone.client.utils.HttpUtils;
 import org.dataone.client.v2.MNode;
 import org.dataone.client.v2.impl.MultipartMNode;
 import org.dataone.service.cn.impl.v2.NodeRegistryService;
@@ -59,7 +54,7 @@ public class ClientNodeService {
         } else {
             try {
                 
-                Node node = nodeRegistryService.getApprovedNode(mnNodeReference);
+                Node node = nodeRegistryService.getNode(mnNodeReference);
                 
                 MultipartRestClient multipartRestClient = new HttpMultipartRestClient();
                 if (node.getType().compareTo(NodeType.MN) == 0) {
@@ -76,16 +71,17 @@ public class ClientNodeService {
                     cnMetacatLogUrl.append(CN_METACAT_PATH);
                     mNode = new MultipartMNode (multipartRestClient, cnMetacatLogUrl.toString());
                 }
+                clientPool.put(mnNodeReference, mNode);
             } catch (ServiceFailure ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+                ex.printStackTrace();
             } catch (NotFound ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+                ex.printStackTrace();
             } catch (IOException ex) {
-                
+                ex.printStackTrace();
             } catch (ClientSideException ex) {
-                Logger.getLogger(ClientNodeService.class.getName()).log(Level.SEVERE, null, ex);
+                ex.printStackTrace();
             }
-            clientPool.put(mnNodeReference, mNode);
+            
             
             
         }
