@@ -248,14 +248,12 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         for (Node node : nodeList.getNodeList()) {
             scheduleNodes.add(node.getIdentifier());
         }
-        if (nodeJobsQuartzScheduled.isEmpty()) {
-            nodeJobsQuartzScheduled = jobsToSchedule;
-        } else {
-            // determine the collection of node entries to add
-            jobsToSchedule = (List<NodeReference>) CollectionUtils.subtract(scheduleNodes, nodeJobsQuartzScheduled);
-            // determine the collection of node entries to delete
-            jobsToDelete = (List<NodeReference>) CollectionUtils.subtract(nodeJobsQuartzScheduled, scheduleNodes);
-        }
+
+        // determine the collection of node entries to add
+        jobsToSchedule = (List<NodeReference>) CollectionUtils.subtract(scheduleNodes, nodeJobsQuartzScheduled);
+        // determine the collection of node entries to delete
+        jobsToDelete = (List<NodeReference>) CollectionUtils.subtract(nodeJobsQuartzScheduled, scheduleNodes);
+
         logger.info("Node map has " + nodeList.getNodeList().size() + " entries");
 
         for (NodeReference nodeReference : jobsToDelete) {
