@@ -67,8 +67,8 @@ import org.joda.time.DateMidnight;
 /**
  * The bean must be managed by Spring. upon startup of spring it will execute via init method
  *
- * Evaluate whether the NodeList contains nodes that should be harvested for logs. It
- * will add or remove triggers for jobs based on a daily refactoring
+ * Evaluate whether the NodeList contains nodes that should be harvested for logs. It will add or remove triggers for
+ * jobs based on a daily refactoring
  *
  *
  * @author waltz
@@ -115,15 +115,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
 
     private static List<NodeReference> nodeJobsQuartzScheduled = new ArrayList<NodeReference>();
 
-    /** 
-     * Called by Spring to bootstrap log aggregation
-     * it will set up default intervals between job executions for Membernode harvesting
-     * it will initialize Quartz
-     * it will schedule membernodes for harvesting
-     * 
-     * it also adds a listener for changes in the hazelcast Nodes map and hz partitioner
-     * Change in hzNodes or migration of partitions may entail rebalancing of quartz jobs
-     * 
+    /**
+     * Called by Spring to bootstrap log aggregation it will set up default intervals between job executions for
+     * Membernode harvesting it will initialize Quartz it will schedule membernodes for harvesting
+     *
+     * it also adds a listener for changes in the hazelcast Nodes map and hz partitioner Change in hzNodes or migration
+     * of partitions may entail rebalancing of quartz jobs
+     *
      */
     public void init() {
         try {
@@ -184,10 +182,9 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     }
 
     /**
-    * Create a Quartz Job that will re-evaluate the nodes scheduled for harvest
-    * once a day.
-    *  
-    */
+     * Create a Quartz Job that will re-evaluate the nodes scheduled for harvest once a day.
+     *
+     */
     private void scheduleManageHarvest() throws SchedulerException {
 
         //
@@ -213,14 +210,12 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     /**
      * will perform the recalculation of the scheduler.
      *
-     * if scheduler is running, it will be disabled 
-     * The jobs to schedule are determined by Collection math based 
-     * on which if any jobs have already been scheduled
-     * and the state of the nodes from listNodes
+     * if scheduler is running, it will be disabled The jobs to schedule are determined by Collection math based on
+     * which if any jobs have already been scheduled and the state of the nodes from listNodes
      *
-     * manageHarvest is called by a quartz job, there is a possibility of concurrent execution
-     * of the method, therefore the call is synchronized
-     * 
+     * manageHarvest is called by a quartz job, there is a possibility of concurrent execution of the method, therefore
+     * the call is synchronized
+     *
      */
     public synchronized void manageHarvest() throws SchedulerException, NotImplemented, ServiceFailure {
         List<NodeReference> scheduleNodes = new ArrayList<NodeReference>();
@@ -255,10 +250,13 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         jobsToDelete = (List<NodeReference>) CollectionUtils.subtract(nodeJobsQuartzScheduled, scheduleNodes);
 
         logger.info("Node map has " + nodeList.getNodeList().size() + " entries");
-
-        for (NodeReference nodeReference : jobsToDelete) {
-            JobKey jobKey = constructHarvestJobKey(nodeReference);
-            scheduler.deleteJob(jobKey);
+        logger.info(jobsToSchedule.size() + " Jobs to Schedule");
+        logger.info(jobsToDelete.size() + " Jobs to Delete");
+        if (!jobsToDelete.isEmpty()) {
+            for (NodeReference nodeReference : jobsToDelete) {
+                JobKey jobKey = constructHarvestJobKey(nodeReference);
+                scheduler.deleteJob(jobKey);
+            }
         }
         for (Node node : nodeList.getNodeList()) {
             if (node.getState().equals(NodeState.UP)) {
@@ -280,10 +278,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     }
 
     /**
-     * Create the specific Trigger and Job that should be executed by Quartz
-     * only if the MN is UP and available for synchronization
-     * 
-     * @param NodeReference 
+     * Create the specific Trigger and Job that should be executed by Quartz only if the MN is UP and available for
+     * synchronization
+     *
+     * @param NodeReference
      * @param Node
      *
      */
