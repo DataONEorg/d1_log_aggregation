@@ -47,6 +47,7 @@ import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.IMap;
+import org.dataone.cn.batch.logging.LogEntryQueueManager;
 
 /**
  * Access to Objects may change
@@ -72,7 +73,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private HttpSolrClient localhostSolrServer;
     //private LogAccessRestriction logAccessRestriction;
     private URLCodec urlCodec = new URLCodec("UTF-8");
-
+    BlockingQueue<List<LogEntrySolrItem>> logEntryQueue = null;
     public SystemMetadataEntryListener() {
         //String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
         //String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
@@ -88,6 +89,8 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             logger.error(ex.getMessage());
             throw new RuntimeException();
         }
+        LogEntryQueueManager logEntryQueueManager = LogEntryQueueManager.getInstance();
+        logEntryQueue = logEntryQueueManager.getLogEntryQueue();
     }
 
     public void start() {
@@ -211,7 +214,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
 
             try {
-                indexLogEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
+                logEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
                 logger.info("OFFERING - " + publishEntrySolrItemList.size() + " entries for pid: "
                         + systemMetadata.getIdentifier().getValue());
                 // Simple way to throttle publishing of messages
@@ -230,14 +233,6 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
     @Override
     public void entryRemoved(EntryEvent<Identifier, SystemMetadata> arg0) {
-    }
-
-    public BlockingQueue getIndexLogEntryQueue() {
-        return indexLogEntryQueue;
-    }
-
-    public void setIndexLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
-        this.indexLogEntryQueue = indexLogEntryQueue;
     }
 
 }

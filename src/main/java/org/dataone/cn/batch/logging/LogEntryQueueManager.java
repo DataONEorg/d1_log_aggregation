@@ -18,6 +18,7 @@
 package org.dataone.cn.batch.logging;
 
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 
@@ -32,8 +33,11 @@ import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
  */
 public class LogEntryQueueManager {
 
-    private static BlockingQueue<List<LogEntrySolrItem>> logEntryQueue;
-
+    private static BlockingQueue<List<LogEntrySolrItem>> logEntryQueue ;
+    static LogEntryQueueManager logEntryQueueManager = null;
+    private LogEntryQueueManager() {
+        logEntryQueue = new ArrayBlockingQueue<List<LogEntrySolrItem>>(50000, true);
+    }
     public static BlockingQueue<List<LogEntrySolrItem>> getLogEntryQueue() {
         return logEntryQueue;
     }
@@ -41,5 +45,10 @@ public class LogEntryQueueManager {
     public static void setLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> indexLogEntryQueue) {
         logEntryQueue = indexLogEntryQueue;
     }
-
+    public static LogEntryQueueManager getInstance() {
+        if (logEntryQueueManager == null) {
+            logEntryQueueManager = new LogEntryQueueManager();
+        }
+        return logEntryQueueManager;
+    }
 }

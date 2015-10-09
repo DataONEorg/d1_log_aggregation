@@ -33,6 +33,7 @@ import java.util.concurrent.TimeoutException;
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.impl.HttpSolrClient;
 import org.dataone.cn.batch.exceptions.ExecutionDisabledException;
+import org.dataone.cn.batch.logging.LogEntryQueueManager;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -57,7 +58,7 @@ public class LogEntryQueueTask implements Callable {
     private ThreadPoolTaskExecutor taskExecutor;
     // The BlockingQueue logEntryQueue is a threadsafe, non-distributed queue shared with LogEntryQueueTask
     // It is injected via Spring
-    private BlockingQueue<List<LogEntrySolrItem>> logEntryQueue;
+    private LogEntryQueueManager logEntryQueueManager = LogEntryQueueManager.getInstance();
     SimpleDateFormat format = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
     private Integer maxIndexBufferSize = new Integer(1000);
     // Manage this class.  Init will spawn off sequential threads of this class
@@ -73,6 +74,8 @@ public class LogEntryQueueTask implements Callable {
     @Override
     public String call() throws Exception {
         try {
+            BlockingQueue<List<LogEntrySolrItem>> logEntryQueue = logEntryQueueManager.getLogEntryQueue();
+            
             logger.info("Starting LogEntryQueueTask");
 
             List<LogEntrySolrItem> indexLogTasks = null;
@@ -195,14 +198,6 @@ public class LogEntryQueueTask implements Callable {
             futuresMap.put(futureTask, indexLogEntryBuffer);
             logEntryBuffer.clear();
         }
-    }
-
-    public BlockingQueue getLogEntryQueue() {
-        return logEntryQueue;
-    }
-
-    public void setLogEntryQueue(BlockingQueue<List<LogEntrySolrItem>> logEntryQueue) {
-        this.logEntryQueue = logEntryQueue;
     }
 
     public Integer getMaxIndexBufferSize() {
