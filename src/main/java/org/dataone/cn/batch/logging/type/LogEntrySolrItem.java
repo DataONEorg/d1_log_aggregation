@@ -42,7 +42,6 @@ import ch.hsr.geohash.GeoHash;
 import java.util.Date;
 import java.util.List;
 import org.dataone.cn.batch.logging.GeoIPService.GeoIpLocation;
-import org.dataone.service.exceptions.ServiceFailure;
 
 /**
  * Allows the LogEntry domain object to be mapped to a Solr POJO
@@ -81,7 +80,10 @@ public class LogEntrySolrItem implements Serializable {
 
     @Field("pid")
     String pid;
-
+    
+    @Field("seriesId")
+    String seriesId;
+    
     @Field("ipAddress")
     String ipAddress;
 
@@ -160,8 +162,8 @@ public class LogEntrySolrItem implements Serializable {
     @Field("robotLevel")
     String robotLevel;
 
-    @Field("d1_version_compliance")
-    String d1_version_compliance;
+    @Field("versionCompliance")
+    String versionCompliance;
 
     public LogEntrySolrItem() {
 
@@ -178,7 +180,7 @@ public class LogEntrySolrItem implements Serializable {
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
         this.setRobotLevel(ROBOT_LEVEL_NONE);
         this.setRepeatVisit(false);
-        this.d1_version_compliance = DATAONE_VERSION_1;
+        this.versionCompliance = DATAONE_VERSION_1;
 
     }
 
@@ -194,9 +196,9 @@ public class LogEntrySolrItem implements Serializable {
         this.setRobotLevel(ROBOT_LEVEL_NONE);
         this.setRepeatVisit(false);
         if (org.dataone.service.types.v1.Event.convert(item.getEvent()) == null) {
-            this.d1_version_compliance = DATAONE_VERSION_2;
+            this.versionCompliance = DATAONE_VERSION_2;
         } else {
-            this.d1_version_compliance = DATAONE_VERSION_1;
+            this.versionCompliance = DATAONE_VERSION_1;
         }
     }
 
@@ -215,6 +217,10 @@ public class LogEntrySolrItem implements Serializable {
          */
         if (systemMetadata != null) {
             formatId = systemMetadata.getFormatId().getValue();
+            if ((systemMetadata.getSeriesId() != null) && (systemMetadata.getSeriesId().getValue() != null) && 
+                    !(systemMetadata.getSeriesId().getValue().isEmpty())) {
+                this.setSeriesId(systemMetadata.getSeriesId().getValue());
+            }
             this.setFormatId(formatId);
             if (formatId != null) {
                 ObjectFormat format = null;
@@ -553,6 +559,22 @@ public class LogEntrySolrItem implements Serializable {
 
     public void setPid(String pid) {
         this.pid = pid;
+    }
+
+    public String getSeriesId() {
+        return seriesId;
+    }
+
+    public void setSeriesId(String seriesId) {
+        this.seriesId = seriesId;
+    }
+
+    public String getVersionCompliance() {
+        return versionCompliance;
+    }
+
+    public void setVersionCompliance(String versionCompliance) {
+        this.versionCompliance = versionCompliance;
     }
 
     public String getRegion() {
