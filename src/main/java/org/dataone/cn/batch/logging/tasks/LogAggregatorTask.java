@@ -92,8 +92,8 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
     private static final String geoIPdbName = Settings.getConfiguration().getString("LogAggregator.geoIPdbName");
 
     String hzSystemMetaMapString = Settings.getConfiguration().getString("dataone.hazelcast.systemMetadata");
-    static private int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period");
-    static private String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField");
+    static private int triggerIntervalPeriod = Settings.getConfiguration().getInt("LogAggregator.triggerInterval.period", 24);
+    static private String triggerIntervalPeriodField = Settings.getConfiguration().getString("LogAggregator.triggerInterval.periodField", "default");
     SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     private static final int MAX_OFFERED_ATTEMPTS = 100;
@@ -149,10 +149,10 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             // offsets are really only useful for testing
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
                 // endDateTime is really now offset by a seconds found in config file
-                endDateTime.minusSeconds(triggerIntervalPeriod);
+                endDateTime = endDateTime.minusSeconds(triggerIntervalPeriod);
             } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
                 // endDateTime is really now offset by a minutes found in config file
-                endDateTime.minusMinutes(triggerIntervalPeriod);
+                endDateTime = endDateTime.minusMinutes(triggerIntervalPeriod);
             } else {
                 // endDateTime is really midnight, or start of the day ( or however you would
                 // like to think about the break of a day)
