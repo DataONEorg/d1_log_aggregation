@@ -105,9 +105,6 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     // so that not all jobs start at once, they should be staggered
     static final int delayStartOffset = Settings.getConfiguration().getInt(
             "LogAggregator.delayStartOffset.minutes", 1);
-    // Amount of time to delay the start the recovery job at initialization
-    static final int delayRecoveryOffset = Settings.getConfiguration().getInt(
-            "LogAggregator.delayRecoveryOffset.minutes", 5);
     private static final String hzNodesName = Settings.getConfiguration().getString(
             "dataone.hazelcast.nodes");
 
