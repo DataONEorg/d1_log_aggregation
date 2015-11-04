@@ -40,6 +40,9 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
@@ -128,13 +131,13 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
         // Event log record types to check for counter compliance
         HashSet<String> eventsToCheck = new HashSet<String>(Arrays.asList("read"));
         // List of web robots according to COUNTER standard
-        ArrayList<String> robotsStrict = new ArrayList<String>();
+        ArrayList<String> fullWebRobotList = new ArrayList<String>();
         // Less strict list of web robots than COUNTER standard
-        ArrayList<String> robotsLoose = new ArrayList<String>();
+        ArrayList<String> partialWebRobotList = new ArrayList<String>();
         // Cache for the read events, indexed by IPaddress. This cache will grow as the log entries
         // are processed, so it will be purged after it reaches a certain size.
         HashMap<String, DateTime> readEventCache = new HashMap<String, DateTime>();
-        int readEventCacheMax = 5000;
+        List<CSVRecord> webRobotIPs = new ArrayList<CSVRecord>();
 
         try {
             Boolean tryAgain = false;
@@ -183,7 +186,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             }
 
             Date mostRecentLoggedDate = new Date(lastMofidiedDate.getTime());
-            Date repeatVisitMostRecentLoggedDate = new Date(lastMofidiedDate.getTime());
+            
             // The last Harvested Date is always the most recent date of the last harvest
             // To get the next range of records, add a millisecond to the date
             // for use as the 'fromDate' parameter of the log query            
@@ -207,26 +210,52 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             }
 
             // Get COUNTER compliance related parameters
-            String robotsStrictFilePath = Settings.getConfiguration().getString("LogAggregator.robotsStrictFilePath");
-            String robotsLooseFilePath = Settings.getConfiguration().getString("LogAggregator.robotsLooseFilePath");
+            String fullWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.fullWebRobotListFilePath");
+            String partialWebRobotListFilePath = Settings.getConfiguration().getString("LogAggregator.partialWebRobotListFilePath");
             final int repeatVisitIntervalSeconds = Settings.getConfiguration().getInt("LogAggregator.repeatVisitIntervalSeconds");
+            Boolean doWebRobotIPcheck = Settings.getConfiguration().getBoolean("LogAggregator.doWebRobotIPcheck");
+            // Max number of entries in the read event cache
+            int readEventCacheMax = Settings.getConfiguration().getInt("LogAggregator.readEventCacheMax");
+            // Starting max number of entries in read event cache, can grow to readEventCacheMax before it is purged
+            // of events older than 30 seconds
+            int readEventCacheCurrentMax = 1000;
 
+            BufferedReader inBuf;
+            
             // Read in the list of web robots needed for COUNTER compliance checking
             String filePath = null;
             try {
-                BufferedReader inBuf;
+				if (doWebRobotIPcheck) {
+					String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
+					String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
+					// Read in the list of IP addresses associated with known web robots
+					filePath = webRobotIPsFilePath;
+					inBuf = new BufferedReader(new FileReader(filePath));
+					CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+					webRobotIPs = parser.getRecords();
+					parser.close();
+					// Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
+					// will be flagged as robot requests, so that these requests can be easily filtered
+					// from usage statistics
+					filePath = DataONE_IPsFilePath;
+					inBuf = new BufferedReader(new FileReader(filePath));
+					parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+					webRobotIPs.addAll(parser.getRecords());
+					parser.close();
+				}
+				
                 String inLine;
-                filePath = robotsStrictFilePath;
+				filePath = fullWebRobotListFilePath;
                 inBuf = new BufferedReader(new FileReader(filePath));
                 while ((inLine = inBuf.readLine()) != null) {
-                    robotsStrict.add(inLine);
+					fullWebRobotList.add(inLine);
                 }
                 inBuf.close();
 
-                filePath = robotsLooseFilePath;
+				filePath = partialWebRobotListFilePath;
                 inBuf = new BufferedReader(new FileReader(filePath));
                 while ((inLine = inBuf.readLine()) != null) {
-                    robotsLoose.add(inLine);
+					partialWebRobotList.add(inLine);
                 }
                 inBuf.close();
             } catch (FileNotFoundException ex) {
@@ -245,7 +274,12 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
 
             logger.info("LogAggregatorTask-" + d1NodeReference.getValue() + " starting retrieval From " + DateTimeMarshaller.serializeDateToUTC(lastMofidiedDate) + " To " + DateTimeMarshaller.serializeDateToUTC(endDateTime.toDate()));
             do {
+                // We only want to publish log records harvested from the Member Node if they pass all tests
+                // such as the identifier not being blank, etc. The logEntrySolrItem list holds records
+                // harvested from the MN and logEntrySolrItemList holds solr records that have passed 
+                // the data integrity checks below.
                 List<LogEntrySolrItem> logEntrySolrItemList = new ArrayList<LogEntrySolrItem>();
+                List<LogEntrySolrItem> logEntrySolrItemListToPublish = new ArrayList<LogEntrySolrItem>();
                 tryAgain = false;
                 // read upto a 1000 objects (the default, but it can be overwritten)
                 // from ListObjects and process before retrieving more
@@ -279,8 +313,12 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     // processing will add date aggregated, subjects allowed to read,
                     // and a unique identifier
                     for (LogEntrySolrItem solrItem : logEntrySolrItemList) {
-                        if (solrItem.getDateLogged().after(repeatVisitMostRecentLoggedDate)) {
-                            repeatVisitMostRecentLoggedDate = solrItem.getDateLogged();
+                        if (solrItem.getPid() == null || solrItem.getPid().trim().compareTo("") == 0) {
+                            logger.error("LogAggregatorTask-" + d1NodeReference.getValue() + " Blank or null identifier encountered for entryId: " + solrItem.getEntryId() + ", skipping record.");
+                            continue;
+                        }
+                        if (solrItem.getDateLogged().after(mostRecentLoggedDate)) {
+                            mostRecentLoggedDate = solrItem.getDateLogged();
                         }
 
                         Date now = new Date();
@@ -289,7 +327,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         pid.setValue(solrItem.getPid());
                         SystemMetadata systemMetadata = systemMetadataMap.get(pid);
 
-                        // overwrite whatever the logEntry tells us here
+                        // overwrite whatever the solrItem tells us here
                         // see redmine task #4099: NodeIds of Log entries may be incorrect
                         nodeId = d1NodeReference.getValue();
                         solrItem.setNodeIdentifier(nodeId);
@@ -299,18 +337,48 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         /*
                          * Fill in the solrItem fields for fields that are either obtained
                          * from systemMetadata (i.e. formatId, size for a given pid) or are
-                         * derived from a field in the logEntry (i.e. location names,
-                         * geohash_* are derived from the ipAddress in the logEntry).
+                         * derived from a field in the solrItem (i.e. location names,
+                         * geohash_* are derived from the ipAddress in the solrItem).
                          */
-                        solrItem.updateSysmetaFields(systemMetadata);
-                        solrItem.updateLocationFields(geoIPsvc);
-                        solrItem.setCOUNTERfields(robotsLoose, robotsStrict, readEventCache, eventsToCheck, repeatVisitIntervalSeconds);
-                        // The cache of read events, indexed by IP address, has grown past the max allowed size, so purge entries that are older
-                        // than the repeatVisitIntervalSeconds minus the time from the latest event.
-                        if (readEventCache.size() > readEventCacheMax) {
-                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache");
+			try {
+                            solrItem.updateSysmetaFields(systemMetadata);
+			} catch (Exception e) {
+			    e.printStackTrace();
+			    logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+			        + " error setting system metadata fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                            // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
+                            // log solr index
+			    continue;
+			}
+			try {
+                            solrItem.updateLocationFields(geoIPsvc);
+			} catch (Exception e) {
+			    e.printStackTrace();
+			    logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+			        + " error setting location fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                            // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
+                            // log solr index
+			    continue;
+			}
+			try {
+			    solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck,
+			        repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+			} catch (Exception e) {
+			    e.printStackTrace();
+			    logger.error("LogAggregatorTask-" + d1NodeReference.getValue()
+			        + " error setting COUNTER fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                            // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
+                            // log solr index
+			    continue;
+			}
+                        // Purge the read event cache if it grows past a specified max value, however
+                        // the number of items in the cache is determined by how far away they are from
+                        // the time of the last event, so we need to check the purged size to see
+                    	// if the the cache needs to be bigger.
+                       	if (readEventCache.size() > readEventCacheCurrentMax) {
+                            logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Purging Read Event Cache, size: " + readEventCache.size());
                             Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
-                            DateTime eventWindowStart = new DateTime(repeatVisitMostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds);
+                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds+1);
                             while (iterator.hasNext()) {
                                 Map.Entry<String, DateTime> readEvent = iterator.next();
                                 if (readEvent.getValue().isBefore(eventWindowStart)) {
@@ -318,17 +386,37 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                                 }
                             }
                             logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Read Event Cache size after purge: " + readEventCache.size());
-                        }
 
-                        //Long integral = new Long(now.getTime());
-                        //Long decimal = new Long(hzAtomicNumber.incrementAndGet());
-                        //String id = integral.toString() + "." + decimal.toString();
+                            // The eventCache purged of events that are older than repeatVisitIntervalSeconds minus the latest time.
+                            // If the cache is larger max size after the purge, then adjust the max size to 5% greater than the
+                            // purged size.
+                            // The intent here is to intelligently increase the size of the cache so that it fits the current time window size,
+                            // so that the cache isn't being purged continually.
+                            if (readEventCache.size() > readEventCacheCurrentMax) {
+                                float perc;
+                                perc = (float) readEventCache.size() * (5.0f / 100.0f);
+                                int newMax = readEventCache.size() + Math.round(perc);
+                                // Try to increase cache size, but don't increase past max value
+                                if (newMax < readEventCacheMax) {
+                                	readEventCacheCurrentMax = newMax;
+                                	logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "Adjusting readEventCache max to: " + readEventCacheCurrentMax);
+                                } else {
+                                	readEventCacheCurrentMax = readEventCacheMax;
+                                	logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + "Can't adjust readEventCache max to greater than: " + readEventCacheMax);
+                        }
+                            }
+                    	}
+
                         /* Use the Member Node identifier combined with entryId for the Solr unique key. This natural key should be 
                          * globally unique, but also ensure that re-harvesting will not add duplicate records.
                          */
                         String id = nodeId + "." + solrItem.getEntryId();
                         solrItem.setId(id);
+                        logEntrySolrItemListToPublish.add(solrItem);
+                        //logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " added id: " + solrItem.getPid() + " to solt item list.");
                     }
+
+    		    logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " Done setting fields for entries, # of items to be added: " + logEntrySolrItemListToPublish.size());
 
                     // publish 100 at a time, do not overwhelm the
                     // network with massive packets, or too many small packets
@@ -336,18 +424,17 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                     int endIndex = 0;
                     do {
                         endIndex += 100;
-                        if (logEntrySolrItemList.size() < endIndex) {
-                            endIndex = logEntrySolrItemList.size();
+                        if (logEntrySolrItemListToPublish.size() < endIndex) {
+                            endIndex = logEntrySolrItemListToPublish.size();
                         }
                         List<LogEntrySolrItem> publishEntrySolrItemList = new ArrayList<LogEntrySolrItem>(100);
-                        publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
-
-                        logEntryQueue.put(logEntrySolrItemList);
+                        publishEntrySolrItemList.addAll(logEntrySolrItemListToPublish.subList(startIndex, endIndex));
+                        logger.debug("LogAggregatorTask-" + d1NodeReference.getValue() + " publishing " + publishEntrySolrItemList.size() + " itmes to hzLogEntryTopic");
+                        logEntryQueue.put(logEntrySolrItemListToPublish);
                         Boolean offeredLogEntry = false;
                         int offeredAttempts = 0;
 
                         while (!offeredLogEntry) {
-
                             try {
                                 offeredLogEntry = logEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
                             } catch (InterruptedException ex) {
@@ -377,7 +464,7 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
                         }
 
                         startIndex = endIndex;
-                    } while (endIndex < logEntrySolrItemList.size());
+                    } while (endIndex < logEntrySolrItemListToPublish.size());
                     // Persist the most recent log date in LDAP
                     if (mostRecentLoggedDate.after(lastMofidiedDate)) {
                         nodeAccess.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
@@ -420,5 +507,4 @@ public class LogAggregatorTask implements Callable<Date>, Serializable {
             throw new ExecutionException(ex);
         }
     }
-
 }

@@ -42,7 +42,31 @@ public class GeoIPService {
 	private LookupService geoIPsvc = null;
 	private Logger logger = null;
 	private static GeoIPService instance = null;
+	private String country = null;
+	private String region = null;
+	private String city = null;
+	private double latitude = 0.0;
+	private double longitude = 0.0;
 
+	public String getCountry() {
+		return country;
+	}
+	
+	public String getRegion() {
+		return region;
+	}
+
+	public String getCity() {
+		return city;
+	}
+	
+	public double getLatitude() {
+		return latitude;
+	}
+	
+	public double getLongitude() {
+		return longitude;
+	}
 	
 	/**
 	 * Set the location attributes for this object
@@ -51,30 +75,34 @@ public class GeoIPService {
 	 *            the IP address to obtain location information for
 	 */
 	
-	public GeoIpLocation getLocation(String IPaddr) {
-                GeoIpLocation geoIpItem = new GeoIpLocation();
+	public void initLocation(String IPaddr) {
+
+		Location location = null;
+		country = null;
+		region = null;
+		city = null;
+		Logger logger = Logger.getLogger(GeoIPService.class.getName());
+
 		// Reopen the database file if we have closed it.
 		if (geoIPsvc == null)
 			geoIPsvc = getLookupService();
 
 		if (geoIPsvc != null) {
 			if (IPaddr != null && geoIPsvc != null) {
-				Location location = geoIPsvc.getLocation(IPaddr);
+				location = geoIPsvc.getLocation(IPaddr);
 
 				if (location != null) {
-					geoIpItem.setCountry(location.countryName);
-					geoIpItem.setRegion(regionName.regionNameByCode(
-							location.countryCode, location.region));
-					geoIpItem.setCity(location.city);
-					geoIpItem.setLatitude(location.latitude);
-					geoIpItem.setLongitude(location.longitude);
+					country = location.countryName;
+					region = regionName.regionNameByCode(
+							location.countryCode, location.region);
+					city = location.city;
+					latitude = location.latitude;
+					longitude = location.longitude;
 				} else {
-					System.out.println("location not found");
+					logger.error("Location not found for IP address: " + "\"" + IPaddr + "\"");
 				}
-				
 			}
 		}
-                return geoIpItem;
 	}
 
 	/**
@@ -152,52 +180,4 @@ public class GeoIPService {
 			geoIPsvc = null;
 		}
 	}
-        public class GeoIpLocation {
-
-
-            private String country = null;
-            private String region = null;
-            private String city = null;
-            private double latitude = 0.0;
-            private double longitude = 0.0;
-            public void setCountry(String country) {
-                this.country = country;
             }
-
-            public void setRegion(String region) {
-                this.region = region;
-            }
-
-            public void setCity(String city) {
-                this.city = city;
-            }
-
-            public void setLatitude(double latitude) {
-                this.latitude = latitude;
-            }
-
-            public void setLongitude(double longitude) {
-                this.longitude = longitude;
-            }
-            public String getCountry() {
-                    return country;
-            }
-
-            public String getRegion() {
-                    return region;
-            }
-
-            public String getCity() {
-                    return city;
-            }
-
-            public double getLatitude() {
-                    return latitude;
-            }
-
-            public double getLongitude() {
-                    return longitude;
-            }
-        
-        }
-}
