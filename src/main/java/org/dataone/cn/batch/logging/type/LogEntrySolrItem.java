@@ -19,29 +19,32 @@ package org.dataone.cn.batch.logging.type;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.math.BigInteger;
 
+import org.apache.commons.csv.CSVRecord;
+import org.apache.commons.net.util.SubnetUtils;
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.beans.Field;
 import org.dataone.client.v2.formats.ObjectFormatCache;
 import org.dataone.cn.batch.logging.GeoIPService;
 import org.dataone.cn.batch.logging.LogAccessRestriction;
 import org.dataone.service.exceptions.BaseException;
+import org.dataone.service.types.v1.ObjectFormatIdentifier;
+import org.dataone.service.types.v1.Subject;
 import org.dataone.service.types.v2.LogEntry;
 import org.dataone.service.types.v2.ObjectFormat;
-import org.dataone.service.types.v1.ObjectFormatIdentifier;
 import org.dataone.service.types.v2.SystemMetadata;
 import org.joda.time.DateTime;
 import org.joda.time.Period;
 
 import ch.hsr.geohash.GeoHash;
 
-import java.util.Date;
-import java.util.List;
-import org.dataone.cn.batch.logging.GeoIPService.GeoIpLocation;
 
 /**
  * Allows the LogEntry domain object to be mapped to a Solr POJO
@@ -51,10 +54,6 @@ import org.dataone.cn.batch.logging.GeoIPService.GeoIpLocation;
 public class LogEntrySolrItem implements Serializable {
 
     private static Logger logger = Logger.getLogger(LogEntrySolrItem.class.getName());
-
-    private final static String ROBOT_LEVEL_NONE = "none";
-    private final static String ROBOT_LEVEL_LOOSE = "loose";
-    private final static String ROBOT_LEVEL_STRICT = "strict";
 
     private final static String DATAONE_VERSION_1 = "v1";
     private final static String DATAONE_VERSION_2 = "v2";
@@ -156,11 +155,14 @@ public class LogEntrySolrItem implements Serializable {
     @Field("location")
     String location;
 
-    @Field("repeatVisit")
-    Boolean repeatVisit;
+    @Field("isRepeatVisit")
+    boolean isRepeatVisit;
 
-    @Field("robotLevel")
-    String robotLevel;
+    @Field("inPartialRobotList")
+    boolean inPartialRobotList;
+
+    @Field("inFullRobotList")
+    boolean inFullRobotList;
 
     @Field("versionCompliance")
     String versionCompliance;
@@ -178,8 +180,9 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent().xmlValue();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-        this.setRobotLevel(ROBOT_LEVEL_NONE);
-        this.setRepeatVisit(false);
+	this.setInPartialRobotList(false);
+	this.setInFullRobotList(false);
+	this.setIsRepeatVisit(false);
         this.versionCompliance = DATAONE_VERSION_1;
 
     }
@@ -193,8 +196,9 @@ public class LogEntrySolrItem implements Serializable {
         this.event = item.getEvent();
         this.dateLogged = item.getDateLogged();
         this.nodeIdentifier = item.getNodeIdentifier().getValue();
-        this.setRobotLevel(ROBOT_LEVEL_NONE);
-        this.setRepeatVisit(false);
+	this.setInPartialRobotList(false);
+	this.setInFullRobotList(false);
+	this.setIsRepeatVisit(false);
         if (org.dataone.service.types.v1.Event.convert(item.getEvent()) == null) {
             this.versionCompliance = DATAONE_VERSION_2;
         } else {
@@ -216,13 +220,17 @@ public class LogEntrySolrItem implements Serializable {
         /* Populate the fields that come from systemMetadata.
          */
         if (systemMetadata != null) {
-            formatId = systemMetadata.getFormatId().getValue();
+	    ObjectFormatIdentifier formatIdObj = systemMetadata.getFormatId();
+	    if (formatIdObj != null) {
+	        formatId = formatIdObj.getValue();
+            }
             if ((systemMetadata.getSeriesId() != null) && (systemMetadata.getSeriesId().getValue() != null) && 
                     !(systemMetadata.getSeriesId().getValue().isEmpty())) {
                 this.setSeriesId(systemMetadata.getSeriesId().getValue());
             }
-            this.setFormatId(formatId);
-            if (formatId != null) {
+			
+    	    if (formatId != null) {
+                this.setFormatId(formatId);
                 ObjectFormat format = null;
                 try {
                     ObjectFormatIdentifier objectFormat = new ObjectFormatIdentifier();
@@ -234,21 +242,32 @@ public class LogEntrySolrItem implements Serializable {
                     logger.warn("Unable to obtain formatType for pid "
                             + this.getPid() + ": " + e.getMessage());
                 }
+	    } else {
+	        this.setFormatId("");
             }
 
             List<String> subjectsAllowedRead = logAccessRestriction.subjectsAllowedRead(systemMetadata);
-            this.setIsPublic(isPublicSubject);
             this.setReadPermission(subjectsAllowedRead);
-            this.setSize(systemMetadata.getSize().longValue());
-            this.setRightsHolder(systemMetadata.getRightsHolder().getValue());
-            this.setIsPublic(isPublicSubject);
-        }
-    }
+	    BigInteger objSize = systemMetadata.getSize();
+	    if (objSize != null) {
+                this.setSize(systemMetadata.getSize().longValue());
+ 	    } else {
+	        this.setSize(0L);
+            }
+	    Subject rh = systemMetadata.getRightsHolder();
+	    if (rh != null) {
+	        this.setRightsHolder(rh.getValue());
+     	    }
+	}
 
+	// This appears to be an unused field 
+	this.setIsPublic(isPublicSubject);
+    }
+	
     /*
      * Fill in the solrItem fields for fields that are
-     * derived from the ipAddress from the logEntry (i.e. city, state,
-     * geohash_* are derived from the ipAddress in the logEntry)
+     * derived from the ipAddress from the solrItem (i.e. city, state,
+     * geohash_* are derived from the ipAddress in the solrItem )
      *
      * @param geoIPsvc GeoIP service instance
      */
@@ -258,29 +277,28 @@ public class LogEntrySolrItem implements Serializable {
         double geohashLat = 0;
         double geohashLong = 0;
 
-		// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
+	// Geohashes will be stored at different lengths which can either be used for determining pid counts for regions of a map
         // at different resolutions, or for searching/filtering
         // Length of geohash to retrieve from service
-        
+	int geohashLength = 9;
 
 		// Set the geographic location attributes determined from the IP address
         // This will be stored in the Solr index as a geohash and as lat, long
         // spatial type
         if (geoIPsvc != null && this.getIpAddress() != null) {
-			// Set the geographic location attributes determined from the IP
+  	    // Set the geographic location attributes determined from the IP
             // address
-            GeoIpLocation geoIpLocation = geoIPsvc.getLocation(this.getIpAddress());
+ 	    geoIPsvc.initLocation(this.getIpAddress());
             // Add the location attributes to the current Solr document
-            this.setCountry(geoIpLocation.getCountry());
-            this.setRegion(geoIpLocation.getRegion());
-            this.setCity(geoIpLocation.getCity());
-			// Calculate the geohash values based on the lat, long returned from
+	    this.setCountry(geoIPsvc.getCountry());
+	    this.setRegion(geoIPsvc.getRegion());
+	    this.setCity(geoIPsvc.getCity());
+	    // Calculate the geohash values based on the lat, long returned from
             // the GeoIP service.
-            geohashLat = geoIpLocation.getLatitude();
-            geohashLong = geoIpLocation.getLongitude();
+	    geohashLat = geoIPsvc.getLatitude();
+	    geohashLong = geoIPsvc.getLongitude();
             String location = String.format("%.4f", geohashLat) + ", "
                     + String.format("%.4f", geohashLong);
-            System.out.println("location: " + location);
             this.setLocation(location);
             try {
                 geohash = GeoHash.withCharacterPrecision(geohashLat,
@@ -296,7 +314,7 @@ public class LogEntrySolrItem implements Serializable {
                 this.setGeohash_9(geohash.substring(0, 9));
             } catch (IllegalArgumentException iae) {
                 logger.error("Error calculating geohash for log record id "
-                        + this.getId() + ": " + iae.getMessage());
+				+ this.getPid() + ": " + iae.getMessage());
             }
         }
     }
@@ -304,22 +322,26 @@ public class LogEntrySolrItem implements Serializable {
     /*
      * Fill in the fields related to COUNTER compliance
      *
-     * @param robotsLoose
-     * @param robotsStrict
+	 * @param partialRobotList
+	 * @param fullRobotList
      * @param readEventCache
      * @param eventsToCheck
      * @param repeatVisitIntervalSeconds
      */
-    public void setCOUNTERfields(ArrayList<String> robotsLoose, ArrayList<String> robotsStrict,
-            HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds) {
+	public void setCOUNTERfields(ArrayList<String> partialRobotList, ArrayList<String> fullRobotList,
+			HashMap<String, DateTime> readEventCache, HashSet<String> eventsToCheck, int repeatVisitIntervalSeconds, 
+			List<CSVRecord> webRobotIPs, Boolean doWebRobotIPcheck) {
 
         String IPaddress = this.getIpAddress();
-        DateTime readEventTime = new DateTime(this.getDateLogged());
+		String docId = this.getPid();
+		DateTime readEventTime = null;
+
+	    readEventTime = new DateTime(this.getDateLogged());
         DateTime intervalEndTime;
-        Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds);
+	    // JodaTime intervals are exclusive for the end of an interval, so add one second to the period
+	    Period repeatVisitPeriod = new Period().withSeconds(repeatVisitIntervalSeconds+1);
         Pattern robotPattern;
-        Matcher robotPatternMatcher;
-        boolean robotMatches;
+	    Matcher robotMatcher;
 
 		// Check if the event for this record is one that we are checking for COUNTER.
         // If not, then return with default values.
@@ -329,49 +351,126 @@ public class LogEntrySolrItem implements Serializable {
 
 		// Iterate over less restrictive list of robots, comparing as regex to the user-agent of
         // the current record.
-        for (String robotRegex : robotsLoose) {
+		for (String robotRegex : partialRobotList) {
+			if (this.userAgent == null || this.userAgent.compareTo("") == 0) {
+				setInPartialRobotList(false);
+				//logger.debug("UserAgent null or blank for entryId: " + this.entryId);
+				break;
+			}
             robotPattern = Pattern.compile(robotRegex.trim());
-            robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
-            robotMatches = robotPatternMatcher.matches();
-            if (robotMatches) {
-                this.setRobotLevel(ROBOT_LEVEL_LOOSE);
+			robotMatcher = robotPattern.matcher(this.userAgent.trim());
+	        if (robotMatcher.find()) {
+	        	setInPartialRobotList(true);
                 break;
             }
         }
 
 		// Iterate over strict list of robots, comparing as regex to the user-agent of
         // the current record.
-        for (String robotRegex : robotsStrict) {
+		for (String robotRegex : fullRobotList) {
             robotPattern = Pattern.compile(robotRegex.trim());
-            robotPatternMatcher = robotPattern.matcher(this.userAgent.trim());
-            robotMatches = robotPatternMatcher.matches();
-            if (robotMatches) {
-                this.setRobotLevel(ROBOT_LEVEL_STRICT);
+			if (this.userAgent == null || this.userAgent.compareTo("") == 0) {
+				//logger.debug("UserAgent null or blank for entryId: " + this.entryId);
+				setInFullRobotList(false);
                 break;
             }
+			robotMatcher = robotPattern.matcher(this.userAgent.trim());
+	        if (robotMatcher.find()) {
+	        	setInFullRobotList(true);
+	        	break;
         }
+		}
 
+		// If this log entry passed the web robot tests based on the user agent matching a known web robot user agent,
+		// then perform an additional test on known IP addresses for web Robot. If both strict and
+		// loose robot user agent tests failed (is robot) then there is no need to run this test, as
+		// we already know this is a robot!
+		if (doWebRobotIPcheck && !(this.getInPartialRobotList() && this.getInFullRobotList())) {
+			Boolean inRange;
+			SubnetUtils utils;
+			// Does this web robot IP specify a CIDR netmask, i.e.
+			// "192.168.0.15/24"
+			Pattern IPrangePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+/\\d+");
+			Pattern IPsinglePattern = Pattern.compile("\\d+\\.\\d+\\.\\d+\\.\\d+");
+			Matcher IPrangeMatcher;
+			Matcher IPsingleMatcher;
+			if (this.ipAddress == null || this.ipAddress.trim().compareTo("") == 0) {
+				this.setInPartialRobotList(false);
+				this.setInFullRobotList(false);
+			} else {
+				for (CSVRecord webBot : webRobotIPs) {
+					try {
+						String webBotIP = webBot.get(0).trim();
+						// Check if this IP is a CIDR, i.e. range of IP
+						// addresses.
+						// If
+						// yes, then we have to see if the IP of the read
+						// request is
+						// in the range
+						// of IP addresses specified in the CIDR address, i.e.
+						// is
+						// 192.168.0.1
+						// in the range 192.168.0.15/24
+						IPrangeMatcher = IPrangePattern.matcher(webBotIP);
+						IPsingleMatcher = IPsinglePattern.matcher(webBotIP);
+						inRange = false;
+						if (IPrangeMatcher.find()) {
+							utils = new SubnetUtils(webBotIP);
+							inRange = utils.getInfo().isInRange(this.ipAddress.trim());
+							if (inRange) {
+								//logger.debug("Matched IP " + this.ipAddress.trim() + " with web robot IP range: " + webBotIP);
+								this.setInPartialRobotList(true);
+								this.setInFullRobotList(true);
+								break;
+							}
+						} else if (IPsingleMatcher.find()) {
+							if (webBotIP.trim().equals(this.ipAddress.trim())) {
+								// logger.debug("Matched IP " + this.ipAddress.trim() + " with single web robot IP: " + webBotIP);
+								this.setInPartialRobotList(true);
+								this.setInFullRobotList(true);
+								break;
+							}
+						}
+					} catch (IllegalArgumentException ia) {
+						logger.error("setCOUNTERfields: Invalid IP address encountered: " + "\"" + this.ipAddress + "\"");
+						this.setInPartialRobotList(false);
+						this.setInFullRobotList(false);
+						break;
+					}
+				}
+			}
+		}
+		
         DateTime cachedEventTime;
 		// Check if this log record is a 'repeat visit', i.e. this is a read
-        // event from the same IP address as an earlier request happening
+		// event from the same IP address, for the same docid as an earlier
+		// request happening
         // within a specified time interval.
-        if (readEventCache.containsKey(IPaddress)) {
-			// A read event for this IP address was previously cached, so see if the current read event
+		// Note: The event records returned from the DataONE member node are
+		// ordered by 'entryId',
+		// thus they are also ordered by date/time, so it is true that
+		// events are processed in order, by date.
+		String eventKey = IPaddress + docId;
+		if (readEventCache.containsKey(eventKey)) {
+			// A read event for this IP address + docId was previously
+			// cached, so see if the current read event
             // was within 30 seconds of the cached one.
-            cachedEventTime = readEventCache.get(IPaddress);
+			cachedEventTime = readEventCache.get(eventKey);
             intervalEndTime = cachedEventTime.plus(repeatVisitPeriod);
-            if (readEventTime.isBefore(intervalEndTime) || readEventTime.isEqual(intervalEndTime)) {
-                this.setRepeatVisit(true);
+			if (readEventTime.isAfter(cachedEventTime) && readEventTime.isBefore(intervalEndTime)) {
+				this.setIsRepeatVisit(true);
             } else {
-				// This event entry must be after the repeatEventInterval, so
-                // make it the new beginning of the repeatEventInterval for this IP address.
-                readEventCache.put(IPaddress, readEventTime);
-                this.setRepeatVisit(false);
+				// This event entry must be after the repeatEventInterval,
+				// so
+				// make it the new beginning of the repeatEventInterval for
+				// this IP address.
+				readEventCache.put(eventKey, readEventTime);
+				this.setIsRepeatVisit(false);
             }
         } else {
             // No entry for this IP, so create a new one
-            readEventCache.put(IPaddress, readEventTime);
-            this.setRepeatVisit(false);
+			readEventCache.put(eventKey, readEventTime);
+			this.setIsRepeatVisit(false);
         }
 
         return;
@@ -585,12 +684,12 @@ public class LogEntrySolrItem implements Serializable {
         this.region = region;
     }
 
-    public Boolean getRepeatVisit() {
-        return repeatVisit;
+    public boolean getIsRepeatVisit() {
+        return isRepeatVisit;
     }
 
-    public void setRepeatVisit(Boolean repeatVisit) {
-        this.repeatVisit = repeatVisit;
+    public void setIsRepeatVisit(boolean isRepeatVisit) {
+        this.isRepeatVisit = isRepeatVisit;
     }
 
     public String getRightsHolder() {
@@ -601,14 +700,22 @@ public class LogEntrySolrItem implements Serializable {
         this.rightsHolder = rightsHolder;
     }
 
-    public String getRobotLevel() {
-        return this.robotLevel;
+    public boolean getInPartialRobotList() {
+    	return this.inPartialRobotList;
     }
 
-    public void setRobotLevel(String level) {
-        this.robotLevel = level;
+    public void setInPartialRobotList(boolean isRobot) {
+        this.inPartialRobotList = isRobot;
     }
 
+    public boolean getInFullRobotList() {
+    	return this.inFullRobotList;
+    }
+
+    public void setInFullRobotList(boolean isRobot) {
+        this.inFullRobotList = isRobot;
+    }
+    
     public long getSize() {
         return size;
     }

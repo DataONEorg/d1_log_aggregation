@@ -92,11 +92,11 @@ public class GeoIPtest extends TestCase {
 		geoIPsvc = GeoIPService.getInstance(dbFilename);
 
 		// IP address for NCEAS
-		GeoIPService.GeoIpLocation location = geoIPsvc.getLocation("128.111.84.40");
-		String cityName = location.getCity();
+		geoIPsvc.initLocation("128.111.84.40");
+		String cityName = geoIPsvc.getCity();
 		assert (cityName.equals("Santa Barbara"));
-		double latitude = location.getLatitude();
-		double longitude = location.getLongitude();
+		double latitude = geoIPsvc.getLatitude();
+		double longitude = geoIPsvc.getLongitude();
 		float delta = 0.0002f;
 		assertEquals(latitude, 34.4329f, delta);
 		assertEquals(longitude, -119.8370f, delta);
