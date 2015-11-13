@@ -9,7 +9,6 @@ import java.util.Stack;
 import org.apache.log4j.Logger;
 import org.dataone.client.v2.MNode;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
-import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
@@ -42,7 +41,7 @@ public class NodeCommunication extends org.dataone.cn.batch.logging.v1.NodeCommu
     public List<LogEntrySolrItem> harvest(Stack<LogQueryDateRange> logQueryStack, Integer queryTotalLimit)
             throws ServiceFailure, NotAuthorized, InvalidRequest, NotImplemented, InvalidToken, QueryLimitException {
         // logger is not  be serializable, but no need to make it transient imo
-        Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
+        Logger logger = Logger.getLogger(NodeCommunication.class.getName());
         List<LogEntrySolrItem> writeQueue = new ArrayList<>();
         try {
             LogQueryDateRange logQueryDateRange = logQueryStack.pop();

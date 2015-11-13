@@ -21,7 +21,7 @@ import com.hazelcast.core.IMap;
 import java.util.Date;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
+import org.dataone.cn.batch.logging.tasks.LogHarvesterTask;
 import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.NodeReference;
 import org.quartz.DisallowConcurrentExecution;
@@ -82,8 +82,8 @@ public class LogAggregationHarvestJob implements Job {
                     Node node = nodeRegistryService.getNode(nodeReference);
                     NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
 
-                    LogAggregatorTask harvestTask = new LogAggregatorTask(nodeHarvester);
-                    Date lastProcessingCompletedDate = harvestTask.call();
+                    LogHarvesterTask harvestTask = new LogHarvesterTask(nodeHarvester);
+                    Date lastProcessingCompletedDate = harvestTask.harvest();
 
                     if (lastProcessingCompletedDate == null) {
                         logger.info("Job-" + nodeIdentifier + " Task returned with no completion date!");
