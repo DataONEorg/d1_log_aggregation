@@ -437,7 +437,7 @@ public class LogHarvesterTask  {
                         while (!offeredLogEntry) {
                             
                             try {
-                                offeredLogEntry = solrClientManager.submitBeans(publishEntrySolrItemList);
+                                offeredLogEntry = solrClientManager.submitBeans(d1NodeReference, publishEntrySolrItemList);
                             } catch (SolrServerException ex) {
                                 logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
                                 ex.printStackTrace();
