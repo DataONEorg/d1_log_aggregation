@@ -462,13 +462,6 @@ public class LogHarvesterTask  {
                                 mostRecentLoggedDate = solrItem.getDateLogged();
                             }
                         }
-                        try {
-                            // Simple way to throttle publishing of messages
-                            // thread should sleep for 250MS
-                            Thread.sleep(250L);
-                        } catch (InterruptedException ex) {
-                            logger.warn("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
-                        }
 
                         startIndex = endIndex;
                     } while (endIndex < logEntrySolrItemListToPublish.size());
