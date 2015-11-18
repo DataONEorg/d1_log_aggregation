@@ -47,7 +47,7 @@ import com.hazelcast.client.HazelcastClient;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.IMap;
-import org.dataone.cn.batch.logging.LogEntryQueueManager;
+import org.dataone.cn.batch.logging.SolrClientManager;
 
 /**
  * Access to Objects may change
@@ -73,7 +73,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
     private HttpSolrClient localhostSolrServer;
     //private LogAccessRestriction logAccessRestriction;
     private URLCodec urlCodec = new URLCodec("UTF-8");
-    BlockingQueue<List<LogEntrySolrItem>> logEntryQueue = null;
+    SolrClientManager solrClientManager = null;
     public SystemMetadataEntryListener() {
         //String cnURL = Settings.getConfiguration().getString("D1Client.CN_URL");
         //String localhostCNURL = cnURL.substring(0, cnURL.lastIndexOf("/cn"));
@@ -89,8 +89,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             logger.error(ex.getMessage());
             throw new RuntimeException();
         }
-        LogEntryQueueManager logEntryQueueManager = LogEntryQueueManager.getInstance();
-        logEntryQueue = logEntryQueueManager.getLogEntryQueue();
+        solrClientManager = SolrClientManager.getInstance();
     }
 
     public void start() {
@@ -214,14 +213,16 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             publishEntrySolrItemList.addAll(logEntrySolrItemList.subList(startIndex, endIndex));
 
             try {
-                logEntryQueue.offer(publishEntrySolrItemList, 30L, TimeUnit.SECONDS);
-                logger.info("OFFERING - " + publishEntrySolrItemList.size() + " entries for pid: "
-                        + systemMetadata.getIdentifier().getValue());
-                // Simple way to throttle publishing of messages
-                // thread should sleep of 250MS
-                Thread.sleep(250L);
-            } catch (InterruptedException ex) {
-                logger.warn(ex.getMessage());
+                localhostSolrServer.addBeans(publishEntrySolrItemList);
+                localhostSolrServer.commit();
+            } catch (SolrServerException ex) {
+                logger.error("SystemMetadataEntryListener- "  + ex.getMessage());
+                ex.printStackTrace();
+
+            } catch (IOException ex) {
+                logger.error("SystemMetadataEntryListener- "  + ex.getMessage());
+                ex.printStackTrace();
+
             }
             startIndex = endIndex;
         } while (endIndex < logEntrySolrItemList.size());
