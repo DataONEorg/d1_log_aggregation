@@ -33,7 +33,6 @@ import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.Subject;
 import org.dataone.service.types.v1.LogEntry;
-import org.dataone.cn.batch.logging.tasks.LogAggregatorTask;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.configuration.Settings;
 import org.joda.time.DateTime;
@@ -52,6 +51,7 @@ import java.util.concurrent.ExecutionException;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.text.SimpleDateFormat;
+import static junit.framework.Assert.assertEquals;
 
 import org.apache.commons.csv.*;
 import org.apache.log4j.Logger;
@@ -107,7 +107,7 @@ public class LogEntryProcessorTest extends TestCase {
 	@SuppressWarnings("resource")
 	public void testRobotFilter() throws Exception {
 
-        Logger logger = Logger.getLogger(LogAggregatorTask.class.getName());
+        Logger logger = Logger.getLogger(LogEntryProcessorTest.class.getName());
         String filePath = "webRobotIPs.csv";
         List<CSVRecord> logRecords;
         BufferedReader inBuf;
