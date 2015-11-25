@@ -42,13 +42,8 @@ public class LogAccessRestriction {
         List<String> subjectsAllowedRead = new ArrayList<String>();
         Subject rightsHolder = systemMetadata.getRightsHolder();
         if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-            try {
-                String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
-                subjectsAllowedRead.add(standardizedName);
-            } catch (IllegalArgumentException ex) {
-                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + rightsHolder.getValue() + " that does not conform to RFC2253 conventions\n" + ex.getMessage());
-                subjectsAllowedRead.add(rightsHolder.getValue());
-            }
+            String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
+            subjectsAllowedRead.add(standardizedName);
         }
         if (systemMetadata.getAccessPolicy() != null) {
             List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
