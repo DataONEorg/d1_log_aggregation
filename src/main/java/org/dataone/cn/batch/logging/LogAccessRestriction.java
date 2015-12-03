@@ -42,8 +42,13 @@ public class LogAccessRestriction {
         List<String> subjectsAllowedRead = new ArrayList<String>();
         Subject rightsHolder = systemMetadata.getRightsHolder();
         if ((rightsHolder != null) && !(rightsHolder.getValue().isEmpty())) {
-            String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
-            subjectsAllowedRead.add(standardizedName);
+            try {
+                String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
+                subjectsAllowedRead.add(standardizedName);
+            } catch (IllegalArgumentException ex) {
+                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + rightsHolder.getValue() + " that does not conform to RFC2253 conventions\n" + ex.getMessage());
+                subjectsAllowedRead.add(rightsHolder.getValue());
+            }
         }
         if (systemMetadata.getAccessPolicy() != null) {
             List<AccessRule> allowList = systemMetadata.getAccessPolicy().getAllowList();
@@ -60,7 +65,12 @@ public class LogAccessRestriction {
                         } else {
                             try {
                                 // add subject as having read access on the record
-                                String standardizedName = CertificateManager.getInstance().standardizeDN(accessSubject.getValue());
+                                String standardizedName = accessSubject.getValue();
+                                try {
+                                	standardizedName = CertificateManager.getInstance().standardizeDN(standardizedName);
+                                } catch (IllegalArgumentException ex) {
+                                	// non-DNs are acceptable
+                                }
                                 subjectsAllowedRead.add(standardizedName);
                             } catch (IllegalArgumentException ex) {
                                 // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
