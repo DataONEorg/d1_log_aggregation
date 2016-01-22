@@ -113,7 +113,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
                 "LogAggregator.active"));
         if (event.getKey() != null && event.getValue() != null && activateJob) {
             SystemMetadata systemMetadata = event.getValue();
-            logger.debug("UPDATE EVENT - index task generator - system metadata callback invoked on pid: "
+            logger.trace("UPDATE EVENT - index task generator - system metadata callback invoked on pid: "
                     + event.getKey().getValue());
             List<LogEntrySolrItem> publishLogEntryList = retrieveLogEntries(event.getKey()
                     .getValue());
@@ -130,7 +130,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         if (event.getKey() != null && event.getValue() != null & activateJob) {
             SystemMetadata systemMetadata = event.getValue();
             if (systemMetadata.getSerialVersion().longValue() == 1) {
-                logger.debug("ADD EVENT - index task generator - system metadata callback invoked on pid: "
+                logger.trace("ADD EVENT - index task generator - system metadata callback invoked on pid: "
                         + event.getKey().getValue());
                 List<LogEntrySolrItem> publishLogEntryList = retrieveLogEntries(event.getKey()
                         .getValue());
@@ -154,7 +154,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
         QueryResponse queryResponse;
         try {
-            logger.debug(queryParams.getQuery());
+//            logger.debug(queryParams.getQuery());
             queryResponse = localhostSolrServer.query(queryParams);
 
             List<LogEntrySolrItem> logEntrySolrItemList = queryResponse
@@ -179,7 +179,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             ioe.printStackTrace();
             logger.error(ioe.getMessage());
         }
-        logger.debug("returning # log entries to modify: " + completeLogEntrySolrItemList.size());
+//        logger.debug("returning # log entries to modify: " + completeLogEntrySolrItemList.size());
         return completeLogEntrySolrItemList;
     }
 
