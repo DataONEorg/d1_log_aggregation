@@ -19,8 +19,7 @@ package org.dataone.cn.batch.logging.jobs;
 
 import com.hazelcast.core.IMap;
 import java.util.Date;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.tasks.LogHarvesterTask;
 import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.NodeReference;
@@ -59,7 +58,8 @@ public class LogAggregationHarvestJob implements Job {
         // rather execute it locally on the machine
         SimpleDateFormat format
                 = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
-        Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
+
+        Logger logger = Logger.getLogger(LogAggregationHarvestJob.class.getName());
         boolean nodeLocked = false;
         IMap<String, String> hzLogAggregatorLockMap = null;
         NodeReference nodeReference = new NodeReference();

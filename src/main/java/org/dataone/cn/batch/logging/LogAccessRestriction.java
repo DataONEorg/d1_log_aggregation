@@ -46,7 +46,7 @@ public class LogAccessRestriction {
                 String standardizedName = CertificateManager.getInstance().standardizeDN(rightsHolder.getValue());
                 subjectsAllowedRead.add(standardizedName);
             } catch (IllegalArgumentException ex) {
-                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + rightsHolder.getValue() + " that does not conform to RFC2253 conventions\n" + ex.getMessage());
+//                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + rightsHolder.getValue() + " that does not conform to RFC2253 conventions\n" + ex.getMessage());
                 subjectsAllowedRead.add(rightsHolder.getValue());
             }
         }
@@ -71,14 +71,14 @@ public class LogAccessRestriction {
                                 // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
                                 // without attempting to standardize it
                                 subjectsAllowedRead.add(accessSubject.getValue());
-                                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + accessSubject.getValue() + " that does not conform to RFC2253 conventions");
+//                                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + accessSubject.getValue() + " that does not conform to RFC2253 conventions");
                             }
                         }
                     }
                 }
             }
         } else {
-            logger.info("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " does not have an access policy");
+            logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " does not have an access policy");
         }
         return subjectsAllowedRead;
     }
