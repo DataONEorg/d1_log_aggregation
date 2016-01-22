@@ -74,31 +74,30 @@ import org.quartz.JobExecutionContext;
  * @author waltz
  */
 public class LogAggregationScheduleManager implements ApplicationContextAware {
-    
+
     private static final int SCHEDULE_MANAGER_ONLY_RUNNING_JOB_COUNT = 100;
     private String clientCertificateLocation = Settings.getConfiguration().getString(
             "D1Client.certificate.directory")
             + File.separator
             + Settings.getConfiguration().getString("D1Client.certificate.filename");
-    
+
     List<String> cnNodeIds = Settings.getConfiguration().getList("cn.nodeIds");
-    
+
     private String localhostCNURL = Settings.getConfiguration().getString("D1Client.CN_URL");
-    
+
     Logger logger = Logger.getLogger(LogAggregationScheduleManager.class.getName());
     // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
-    
+
     NodeRegistryService nodeRegistryService = new NodeRegistryService();
-    
+
     private static Scheduler scheduler;
     ApplicationContext applicationContext;
-    
+
     private SystemMetadataEntryListener systemMetadataEntryListener;
-    
+
     private static SimpleScheduleBuilder simpleTriggerSchedule = null;
-    private static SimpleScheduleBuilder recoveryTriggerSchedule = simpleSchedule()
-            .withRepeatCount(0).withMisfireHandlingInstructionFireNow();
+
     static final DateTimeFormatter zFmt = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final Date initializedDate = DateTimeMarshaller
             .deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
@@ -109,12 +108,17 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             "LogAggregator.delayStartOffset.minutes", 1);
     private static final String hzNodesName = Settings.getConfiguration().getString(
             "dataone.hazelcast.nodes");
-    
+
     private static LogAggregationScheduleManager instance;
-    
+
     private static List<NodeReference> nodeJobsQuartzScheduled = new ArrayList<NodeReference>();
-    
+
     private static JobKey jobScheduleManageHarvestKey = null;
+
+    private int triggerIntervalPeriod = Settings.getConfiguration().getInt(
+            "LogAggregator.triggerInterval.period", 24);
+    private String triggerIntervalPeriodField = Settings.getConfiguration().getString(
+            "LogAggregator.triggerInterval.periodField", "default");
 
     /**
      * Called by Spring to bootstrap log aggregation it will set up default intervals between job executions for
@@ -137,10 +141,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             }
             // log aggregregation should ideally execute at least once per day per membernode
             // Sets the Period of time between sequential job executions, 24 hrs is default
-            int triggerIntervalPeriod = Settings.getConfiguration().getInt(
-                    "LogAggregator.triggerInterval.period", 24);
-            String triggerIntervalPeriodField = Settings.getConfiguration().getString(
-                    "LogAggregator.triggerInterval.periodField", "default");
+
             if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
                 simpleTriggerSchedule = simpleSchedule()
                         .withIntervalInSeconds(triggerIntervalPeriod).repeatForever()
@@ -153,18 +154,18 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
                 simpleTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod)
                         .repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
             } else {
-                simpleSchedule().withIntervalInHours(24).repeatForever()
+                simpleTriggerSchedule = simpleSchedule().withIntervalInHours(24).repeatForever()
                         .withMisfireHandlingInstructionIgnoreMisfires();
             }
             logger.info("LogAggregationScheduler starting up");
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
-            
+
             Properties properties = new Properties();
             properties.load(this.getClass().getResourceAsStream(
                     "/org/dataone/configuration/logQuartz.properties"));
             StdSchedulerFactory schedulerFactory = new StdSchedulerFactory(properties);
             scheduler = schedulerFactory.getScheduler();
-            
+
             systemMetadataEntryListener.start();
             this.scheduleHarvest();
             this.scheduleManageHarvest();
@@ -191,25 +192,57 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
      *
      */
     private void scheduleManageHarvest() throws SchedulerException {
+        SimpleScheduleBuilder manageJobsTriggerSchedule;
+        DateTime startTime = null;
+        //
+        // Add in defaults for scheduling for seconds and minutes
+        // At this point minutes and seconds are only used during
+        // testing but it may be brought into production if 
+        // reporting stats need a higher degree of accurracy
+        // than what was decided in the past
+        //
+        if (triggerIntervalPeriodField.equalsIgnoreCase("seconds")) {
+            manageJobsTriggerSchedule = simpleSchedule()
+                    .withIntervalInMinutes(10).repeatForever()
+                    .withMisfireHandlingInstructionIgnoreMisfires();
+            startTime = new DateTime().plusMinutes(10);
+        } else if (triggerIntervalPeriodField.equalsIgnoreCase("minutes")) {
+            manageJobsTriggerSchedule = simpleSchedule()
+                    .withIntervalInMinutes(60).repeatForever()
+                    .withMisfireHandlingInstructionIgnoreMisfires();
+            startTime = new DateTime().plusHours(1);
+        } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
+            manageJobsTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod)
+                    .repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
+                //
+            // start this job a day in the future at 2am
+            // avoid any odd DST problems by adding a couple hours to what should be midnight
+            // also avoids the problem of startTime within milliseconds of 11:59 and the job executing
+            // at the same time that the schedule is already running manageHarvest through init
+            //
+            startTime = new DateTime().withTimeAtStartOfDay().plusDays(1).plusHours(2);
+        } else {
+            manageJobsTriggerSchedule = simpleSchedule().withIntervalInHours(24).repeatForever()
+                    .withMisfireHandlingInstructionIgnoreMisfires();
+                //
+            // start this job a day in the future at 2am
+            // avoid any odd DST problems by adding a couple hours to what should be midnight
+            // also avoids the problem of startTime within milliseconds of 11:59 and the job executing
+            // at the same time that the schedule is already running manageHarvest through init
+            //
+            startTime = new DateTime().withTimeAtStartOfDay().plusDays(1).plusHours(2);
+        }
 
-        //
-        // start this job a day in the future at 2am
-        // avoid any odd DST problems by adding a couple hours to what should be midnight
-        // also avoids the problem of startTime within milliseconds of 11:59 and the job executing
-        // at the same time that the schedule is already running manageHarvest through init
-        //
-        DateTime startTime = new DateTime().withTimeAtStartOfDay().plusDays(1).plusHours(2);
-        
         jobScheduleManageHarvestKey = new JobKey("job-ScheduleManageHarvest", logGroupName);
         JobDetail job = newJob(LogAggregrationManageScheduleJob.class).withIdentity(jobScheduleManageHarvestKey).build();
         TriggerKey triggerKey = new TriggerKey("trigger-ScheduleManageHarvest",
                 logGroupName);
         Trigger trigger = newTrigger().withIdentity(triggerKey).startAt(startTime.toDate())
-                .withSchedule(simpleTriggerSchedule).build();
+                .withSchedule(manageJobsTriggerSchedule).build();
         logger.info("scheduling job-ScheduleManageHarvest to start at "
                 + zFmt.print(startTime.toDate().getTime()));
         scheduler.scheduleJob(job, trigger);
-        
+
     }
 
     /**
@@ -236,21 +269,21 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         try {
             if (scheduler.isStarted()) {
 
-            // wait until the current job (ScheduleManageHarvest)
+                // wait until the current job (ScheduleManageHarvest)
                 // is the only job executing
                 waitForScheduleManagerOnlyRunningJob();
-            // prevent any other jobs from being triggered
+                // prevent any other jobs from being triggered
                 // once the scheduler is in standby and no jobs are running, then 
                 // the jobs schedule may be re-evaluated and altered
                 scheduler.standby();
                 logger.info("scheduler standby");
-            // however the above is a race condition between this thread
+                // however the above is a race condition between this thread
                 // and the scheduduler. the scheduler may have started a second job
                 // before the standby call was finished executing
                 // so check again before adding or deleting any jobs
                 waitForScheduleManagerOnlyRunningJob();
             }
-            
+
             NodeList nodeList = nodeRegistryService.listNodes();
             for (Node node : nodeList.getNodeList()) {
                 scheduleNodes.add(node.getIdentifier());
@@ -260,7 +293,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             jobsToSchedule = (List<NodeReference>) CollectionUtils.subtract(scheduleNodes, nodeJobsQuartzScheduled);
             // determine the collection of node entries to delete
             jobsToDelete = (List<NodeReference>) CollectionUtils.subtract(nodeJobsQuartzScheduled, scheduleNodes);
-            
+
             logger.debug("Node map has " + nodeList.getNodeList().size() + " entries");
             logger.debug(jobsToSchedule.size() + " Jobs to Schedule");
             logger.debug(jobsToDelete.size() + " Jobs to Delete");
@@ -291,7 +324,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         if (scheduler.isStarted()) {
             logger.info("Scheduler is started");
         }
-        
+
     }
 
     /**
@@ -336,10 +369,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
                 logger.error("Unable to initialize job key " + nodeReference.getValue()
                         + " for daily scheduling: ", ex);
             }
-            
+
         }
     }
-    
+
     private void waitForScheduleManagerOnlyRunningJob() throws SchedulerException, ScheduleManagerException {
         int loopCounter = 0;
         while (!(scheduler.getCurrentlyExecutingJobs().isEmpty())) {
@@ -362,38 +395,38 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             loopCounter++;
         }
     }
-    
+
     private JobKey constructHarvestJobKey(NodeReference nodeReference) {
         return new JobKey("job-" + nodeReference.getValue(), logGroupName);
     }
-    
+
     public Scheduler getScheduler() {
         return scheduler;
     }
-    
+
     public void setScheduler(Scheduler scheduler) {
         this.scheduler = scheduler;
     }
-    
+
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.applicationContext = applicationContext;
     }
-    
+
     public SystemMetadataEntryListener getSystemMetadataEntryListener() {
         return systemMetadataEntryListener;
     }
-    
+
     public void setSystemMetadataEntryListener(
             SystemMetadataEntryListener systemMetadataEntryListener) {
         this.systemMetadataEntryListener = systemMetadataEntryListener;
     }
-    
+
     public static LogAggregationScheduleManager getInstance() throws Exception {
         if (instance == null) {
             throw new UnrecoverableException("LogAggregationScheduleManager is uninitialized");
         }
         return instance;
     }
-    
+
 }

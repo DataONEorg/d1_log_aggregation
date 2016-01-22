@@ -91,10 +91,13 @@ public class LogAggregationHarvestJob implements Job {
                         logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
                     }
                     nodeAccess.setAggregateLogs(nodeReference, true);
+                    nodeAccess.setAggregateLogs(nodeReference, true);
+                } else {
+                    logger.error("Job-" + nodeIdentifier + " LDAP aggregateLogs boolean is False. Check for MN errors.");
                 }
 
             } else {
-                logger.error("Job-" + nodeIdentifier + " Unable to reset LDAP aggregateLogs boolean");
+                logger.error("Job-" + nodeIdentifier + " All jobs are disabled by active indicator in logAggregation.properties");
             }
 
         } catch (Exception ex) {

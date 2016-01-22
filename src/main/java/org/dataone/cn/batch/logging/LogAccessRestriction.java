@@ -65,7 +65,12 @@ public class LogAccessRestriction {
                         } else {
                             try {
                                 // add subject as having read access on the record
-                                String standardizedName = CertificateManager.getInstance().standardizeDN(accessSubject.getValue());
+                                String standardizedName = accessSubject.getValue();
+                                try {
+                                	standardizedName = CertificateManager.getInstance().standardizeDN(standardizedName);
+                                } catch (IllegalArgumentException ex) {
+                                	// non-DNs are acceptable
+                                }
                                 subjectsAllowedRead.add(standardizedName);
                             } catch (IllegalArgumentException ex) {
                                 // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
