@@ -19,8 +19,7 @@ package org.dataone.cn.batch.logging.jobs;
 
 import com.hazelcast.core.IMap;
 import java.util.Date;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.tasks.LogHarvesterTask;
 import org.dataone.configuration.Settings;
 import org.dataone.service.types.v1.NodeReference;
@@ -59,7 +58,8 @@ public class LogAggregationHarvestJob implements Job {
         // rather execute it locally on the machine
         SimpleDateFormat format
                 = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
-        Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
+
+        Logger logger = Logger.getLogger(LogAggregationHarvestJob.class.getName());
         boolean nodeLocked = false;
         IMap<String, String> hzLogAggregatorLockMap = null;
         NodeReference nodeReference = new NodeReference();
@@ -91,10 +91,13 @@ public class LogAggregationHarvestJob implements Job {
                         logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
                     }
                     nodeAccess.setAggregateLogs(nodeReference, true);
+                    nodeAccess.setAggregateLogs(nodeReference, true);
+                } else {
+                    logger.error("Job-" + nodeIdentifier + " LDAP aggregateLogs boolean is False. Check for MN errors.");
                 }
 
             } else {
-                logger.error("Job-" + nodeIdentifier + " Unable to reset LDAP aggregateLogs boolean");
+                logger.error("Job-" + nodeIdentifier + " All jobs are disabled by active indicator in logAggregation.properties");
             }
 
         } catch (Exception ex) {

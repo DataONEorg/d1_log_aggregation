@@ -6,8 +6,8 @@
 
 package org.dataone.cn.batch.logging.jobs;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+
+import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.LogAggregationScheduleManager;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.Job;
@@ -19,14 +19,15 @@ import org.quartz.JobExecutionException;
  * @author waltz
  */
 @DisallowConcurrentExecution
-public class LogAggregrationScheduleJob implements Job {
+public class LogAggregrationManageScheduleJob implements Job {
 
     @Override
     public void execute(JobExecutionContext jec) throws JobExecutionException {
-        Log logger = LogFactory.getLog(LogAggregationHarvestJob.class);
+        Logger logger = Logger.getLogger(LogAggregationHarvestJob.class.getName());
+
         JobExecutionException jex = null;
         try {
-            LogAggregationScheduleManager.getInstance().manageHarvest();
+            LogAggregationScheduleManager.getInstance().scheduleHarvest();
         } catch (Exception ex) {
             ex.printStackTrace();
             logger.error("Job- " + jec.getJobDetail().getKey().getGroup() + ":" + jec.getJobDetail().getKey().getName() + " died: " + ex.getMessage());
