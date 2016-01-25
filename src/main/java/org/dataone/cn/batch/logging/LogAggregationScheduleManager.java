@@ -105,7 +105,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     // Amount of time to delay the start of all jobs at initialization
     // so that not all jobs start at once, they should be staggered
     static final int delayStartOffset = Settings.getConfiguration().getInt(
-            "LogAggregator.delayStartOffset.minutes", 1);
+            "LogAggregator.delayStartOffset.minutes", 2);
     private static final String hzNodesName = Settings.getConfiguration().getString(
             "dataone.hazelcast.nodes");
 
@@ -214,7 +214,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         } else if (triggerIntervalPeriodField.equalsIgnoreCase("hours")) {
             manageJobsTriggerSchedule = simpleSchedule().withIntervalInHours(triggerIntervalPeriod)
                     .repeatForever().withMisfireHandlingInstructionIgnoreMisfires();
-                //
+            //
             // start this job a day in the future at 2am
             // avoid any odd DST problems by adding a couple hours to what should be midnight
             // also avoids the problem of startTime within milliseconds of 11:59 and the job executing
@@ -224,7 +224,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         } else {
             manageJobsTriggerSchedule = simpleSchedule().withIntervalInHours(24).repeatForever()
                     .withMisfireHandlingInstructionIgnoreMisfires();
-                //
+            //
             // start this job a day in the future at 2am
             // avoid any odd DST problems by adding a couple hours to what should be midnight
             // also avoids the problem of startTime within milliseconds of 11:59 and the job executing
@@ -260,33 +260,18 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
         List<NodeReference> jobsToSchedule = null;
         List<NodeReference> jobsToDelete = null;
         DateTime startTime = new DateTime();
-        // delay the startTime to allow all processing to startup and
-        // come to some kind of steady state... might not be possible
-        // to predict, but it should be minimally 5-10 minutes
-        startTime = startTime.plusMinutes(delayStartOffset);
-        // halt all operations
+
         logger.info("manageHarvest");
         try {
-            if (scheduler.isStarted()) {
-
-                // wait until the current job (ScheduleManageHarvest)
-                // is the only job executing
-                waitForScheduleManagerOnlyRunningJob();
-                // prevent any other jobs from being triggered
-                // once the scheduler is in standby and no jobs are running, then 
-                // the jobs schedule may be re-evaluated and altered
-                scheduler.standby();
-                logger.info("scheduler standby");
-                // however the above is a race condition between this thread
-                // and the scheduduler. the scheduler may have started a second job
-                // before the standby call was finished executing
-                // so check again before adding or deleting any jobs
-                waitForScheduleManagerOnlyRunningJob();
-            }
-
+            // determine if any jobs need to be newly scheduled or deleted
+            // if there is no need for alterations, then no need to 
+            // go through scheduling part of method
             NodeList nodeList = nodeRegistryService.listNodes();
             for (Node node : nodeList.getNodeList()) {
-                scheduleNodes.add(node.getIdentifier());
+                // do not attempt to schedule nodes that are down
+                if (node.getState().equals(NodeState.UP)) {
+                    scheduleNodes.add(node.getIdentifier());
+                }
             }
 
             // determine the collection of node entries to add
@@ -297,23 +282,51 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             logger.debug("Node map has " + nodeList.getNodeList().size() + " entries");
             logger.debug(jobsToSchedule.size() + " Jobs to Schedule");
             logger.debug(jobsToDelete.size() + " Jobs to Delete");
-            if (!jobsToDelete.isEmpty()) {
-                for (NodeReference nodeReference : jobsToDelete) {
-                    JobKey jobKey = constructHarvestJobKey(nodeReference);
-                    scheduler.deleteJob(jobKey);
-                    nodeJobsQuartzScheduled.remove(nodeReference);
+
+            if (!jobsToSchedule.isEmpty() || !jobsToDelete.isEmpty()) {
+                // halt all operations
+                // if the scheduler is started then wait until jobs are finished
+                // or until a timeout period has elapsed (and then try again later)
+                if (scheduler.isStarted()) {
+
+                    // wait until the current job (ScheduleManageHarvest)
+                    // is the only job executing
+                    waitForScheduleManagerOnlyRunningJob();
+                    // prevent any other jobs from being triggered
+                    // once the scheduler is in standby and no jobs are running, then 
+                    // the jobs schedule may be re-evaluated and altered
+                    scheduler.standby();
+                    logger.info("scheduler standby");
+                    // however the above is a race condition between this thread
+                    // and the scheduduler. the scheduler may have started a second job
+                    // before the standby call was finished executing
+                    // so check again before adding or deleting any jobs
+                    waitForScheduleManagerOnlyRunningJob();
                 }
-            }
-            for (Node node : nodeList.getNodeList()) {
-                if (node.getState().equals(NodeState.UP)) {
-                    NodeReference nodeReference = node.getIdentifier();
-                    if (jobsToSchedule.contains(nodeReference)) {
-                        startTime = startTime.plusSeconds(90);
-                        addHarvest(nodeReference, node, startTime.toDate());
-                        // cache the jobs that have been added
-                        nodeJobsQuartzScheduled.add(nodeReference);
+
+                if (!jobsToDelete.isEmpty()) {
+                    for (NodeReference nodeReference : jobsToDelete) {
+                        JobKey jobKey = constructHarvestJobKey(nodeReference);
+                        scheduler.deleteJob(jobKey);
+                        nodeJobsQuartzScheduled.remove(nodeReference);
                     }
                 }
+                if (!jobsToSchedule.isEmpty()) {
+                    for (Node node : nodeList.getNodeList()) {
+
+                        NodeReference nodeReference = node.getIdentifier();
+                        if (jobsToSchedule.contains(nodeReference)) {
+
+                            startTime = startTime.plusMinutes(delayStartOffset);
+                            addHarvest(nodeReference, node, startTime.toDate());
+                            // cache the jobs that have been added
+                            nodeJobsQuartzScheduled.add(nodeReference);
+                        }
+
+                    }
+                }
+            } else {
+                logger.info("no alterations need to manageHarvest");
             }
         } catch (ScheduleManagerException e) {
             logger.warn("Timeout from waiting for active jobs to end. Try again later!");
