@@ -293,7 +293,7 @@ public class LogHarvesterTask  {
                         }
                         tryAgain = true;
                         ++queryFailures;
-                        totalFailure += queryFailures;
+                        ++totalFailure;
                         logger.warn("LogHarvesterTask-" + d1NodeReference.getValue() + " " + e.serialize(e.FMT_XML));
                         logger.warn("LogHarvesterTask-" + d1NodeReference.getValue() + " Failures this run = " + totalFailure);
                     } else {
