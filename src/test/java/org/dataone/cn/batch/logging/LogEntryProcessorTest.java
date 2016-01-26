@@ -51,6 +51,7 @@ import java.util.concurrent.ExecutionException;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.text.SimpleDateFormat;
+import static junit.framework.Assert.assertEquals;
 
 import org.apache.commons.csv.*;
 import org.apache.log4j.Logger;

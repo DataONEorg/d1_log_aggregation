@@ -14,6 +14,7 @@ import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
 import org.dataone.cn.batch.logging.NodeHarvester;
+import static org.dataone.cn.batch.logging.NodeHarvester.format;
 import org.dataone.configuration.Settings;
 import org.dataone.service.exceptions.InvalidRequest;
 import org.dataone.service.exceptions.InvalidToken;

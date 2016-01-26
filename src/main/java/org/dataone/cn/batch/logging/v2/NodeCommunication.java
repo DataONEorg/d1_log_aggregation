@@ -8,6 +8,7 @@ import java.util.Stack;
 
 import org.apache.log4j.Logger;
 import org.dataone.client.v2.MNode;
+import static org.dataone.cn.batch.logging.NodeHarvester.format;
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 

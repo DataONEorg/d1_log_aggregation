@@ -76,7 +76,7 @@ public class LogAccessRestriction {
                                 // It may be a group or as yet unidentified pseudo-user,  so just add the subject's value
                                 // without attempting to standardize it
                                 subjectsAllowedRead.add(accessSubject.getValue());
-//                                logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + accessSubject.getValue() + " that does not conform to RFC2253 conventions");
+            //                    logger.warn("SystemMetadata with PID " + systemMetadata.getIdentifier().getValue() + " has a Subject: " + accessSubject.getValue() + " that does not conform to RFC2253 conventions");
                             }
                         }
                     }
