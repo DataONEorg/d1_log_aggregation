@@ -5,7 +5,7 @@
     <artifactId>d1_log_aggregation</artifactId>
     <packaging>jar</packaging>
     <name>DataONE_Log_Aggregation</name>
-    <version>2.0.1</version>
+    <version>2.0.2</version>
     <description>Cn DataONE Logging Aggregation</description>
     <url>http://dataone.org</url>
     <properties>
