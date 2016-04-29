@@ -35,7 +35,10 @@ import org.dataone.cn.batch.logging.exceptions.ScheduleManagerException;
 import org.dataone.cn.batch.logging.jobs.LogAggregationHarvestJob;
 import org.dataone.cn.batch.logging.jobs.LogAggregrationManageScheduleJob;
 import org.dataone.cn.batch.logging.listener.SystemMetadataEntryListener;
+import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
+import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.configuration.Settings;
+import org.dataone.service.cn.v2.NodeRegistryService;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.NodeReference;
 import org.dataone.service.types.v1.NodeState;
@@ -58,7 +61,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 
-import org.dataone.service.cn.impl.v2.NodeRegistryService;
+import org.dataone.service.cn.v2.impl.NodeRegistryServiceImpl;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.types.v2.NodeList;
 import org.jibx.runtime.UnrecoverableException;
@@ -89,7 +92,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
     // Quartz GroupNames for Jobs and Triggers, should be unique for a set of jobs that are related
     private static String logGroupName = "LogAggregatorHarvesting";
 
-    NodeRegistryService nodeRegistryService = new NodeRegistryService();
+    NodeRegistryLogAggregationService nodeRegistryLogAggregationService = new NodeRegistryLogAggregationServiceImpl();
 
     private static Scheduler scheduler;
     ApplicationContext applicationContext;
@@ -266,7 +269,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             // determine if any jobs need to be newly scheduled or deleted
             // if there is no need for alterations, then no need to 
             // go through scheduling part of method
-            NodeList nodeList = nodeRegistryService.listNodes();
+            NodeList nodeList = nodeRegistryLogAggregationService.listNodes();
             for (Node node : nodeList.getNodeList()) {
                 // do not attempt to schedule nodes that are down
                 if (node.getState().equals(NodeState.UP)) {

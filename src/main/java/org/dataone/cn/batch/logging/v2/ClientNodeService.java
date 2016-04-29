@@ -6,14 +6,13 @@
 package org.dataone.cn.batch.logging.v2;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import org.dataone.client.exception.ClientSideException;
 import org.dataone.client.rest.HttpMultipartRestClient;
 import org.dataone.client.rest.MultipartRestClient;
 import org.dataone.client.v2.MNode;
 import org.dataone.client.v2.impl.MultipartMNode;
-import org.dataone.service.cn.impl.v2.NodeRegistryService;
+import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
+import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.service.exceptions.NotFound;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.NodeReference;
@@ -30,11 +29,11 @@ import org.dataone.service.types.v2.Node;
  * @author waltz
  */
 public class ClientNodeService {
-    
-    private Map<NodeReference, MNode> clientPool = new HashMap<>();
+
     static ClientNodeService nodeClientSingleton = null;
     private static final String CN_METACAT_PATH = "/metacat/d1/cn";
-    NodeRegistryService nodeRegistryService = new NodeRegistryService();
+    NodeRegistryLogAggregationService nodeRegistryService = new NodeRegistryLogAggregationServiceImpl();
+
     private ClientNodeService() {
 
     }
@@ -47,46 +46,41 @@ public class ClientNodeService {
 
     }
 
-    public MNode getClientMNode(NodeReference mnNodeReference)  {
+    public MNode getClientMNode(NodeReference mnNodeReference) {
         MNode mNode = null;
-        if (clientPool.containsKey(mnNodeReference)) {
-            mNode = clientPool.get(mnNodeReference);
-        } else {
-            try {
-                
-                Node node = nodeRegistryService.getNode(mnNodeReference);
-                
-                MultipartRestClient multipartRestClient = new HttpMultipartRestClient();
-                if (node.getType().compareTo(NodeType.MN) == 0) {
-                    mNode = new MultipartMNode (multipartRestClient, node.getBaseURL());
-                } else {
-                    //
-                    // The CN must be contacted through the metacat MN interface in order to 
-                    // retrieve the log records
-                    //
 
-                    String cnBaseUrl = node.getBaseURL();
-                    StringBuilder cnMetacatLogUrl = new StringBuilder(cnBaseUrl
-                                            .substring(0, cnBaseUrl.lastIndexOf("/cn")));
-                    cnMetacatLogUrl.append(CN_METACAT_PATH);
-                    mNode = new MultipartMNode (multipartRestClient, cnMetacatLogUrl.toString());
-                }
-                clientPool.put(mnNodeReference, mNode);
-            } catch (ServiceFailure ex) {
-                ex.printStackTrace();
-            } catch (NotFound ex) {
-                ex.printStackTrace();
-            } catch (IOException ex) {
-                ex.printStackTrace();
-            } catch (ClientSideException ex) {
-                ex.printStackTrace();
+        try {
+
+            Node node = nodeRegistryService.getNode(mnNodeReference);
+
+            MultipartRestClient multipartRestClient = new HttpMultipartRestClient();
+            if (node.getType().compareTo(NodeType.MN) == 0) {
+                mNode = new MultipartMNode(multipartRestClient, node.getBaseURL());
+            } else {
+                    //
+                // The CN must be contacted through the metacat MN interface in order to 
+                // retrieve the log records
+                //
+
+                String cnBaseUrl = node.getBaseURL();
+                StringBuilder cnMetacatLogUrl = new StringBuilder(cnBaseUrl
+                        .substring(0, cnBaseUrl.lastIndexOf("/cn")));
+                cnMetacatLogUrl.append(CN_METACAT_PATH);
+                mNode = new MultipartMNode(multipartRestClient, cnMetacatLogUrl.toString());
             }
-            
-            
-            
+
+        } catch (ServiceFailure ex) {
+            ex.printStackTrace();
+        } catch (NotFound ex) {
+            ex.printStackTrace();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        } catch (ClientSideException ex) {
+            ex.printStackTrace();
         }
+
         return mNode;
-        
+
     }
 
 }

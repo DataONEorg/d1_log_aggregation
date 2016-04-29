@@ -42,24 +42,20 @@ import org.apache.commons.csv.CSVRecord;
 import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.dataone.cn.batch.logging.GeoIPService;
-import org.dataone.cn.batch.logging.LogAccessRestriction;
-import org.dataone.cn.batch.logging.NodeRegistryPool;
+
 import org.dataone.cn.batch.logging.exceptions.QueryLimitException;
 import org.dataone.cn.batch.logging.type.LogEntrySolrItem;
 import org.dataone.cn.batch.logging.type.LogQueryDateRange;
-import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.configuration.Settings;
-import org.dataone.service.cn.impl.v2.NodeRegistryService;
+
 import org.dataone.service.exceptions.BaseException;
 import org.dataone.service.exceptions.InvalidRequest;
 import org.dataone.service.exceptions.InvalidToken;
 import org.dataone.service.exceptions.NotAuthorized;
-import org.dataone.service.exceptions.NotFound;
 import org.dataone.service.exceptions.NotImplemented;
 import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v1.Identifier;
 import org.dataone.service.types.v1.NodeReference;
-import org.dataone.service.types.v2.Node;
 import org.dataone.service.types.v2.SystemMetadata;
 import org.dataone.service.util.DateTimeMarshaller;
 import org.joda.time.DateTime;
@@ -68,12 +64,13 @@ import org.joda.time.MutableDateTime;
 
 import org.dataone.cn.batch.logging.NodeHarvester;
 import org.dataone.cn.batch.logging.SolrClientManager;
+import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
+import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.cn.hazelcast.HazelcastClientFactory;
 
 /**
- * A executable task that retrieves a list of LogEntry by calling log on a MN or CN and
- * then publishes them on the LogEntryTopic for processing. It will retrieve and submit in batches of 1000 as the
- * default.
+ * A executable task that retrieves a list of LogEntry by calling log on a MN or CN and then publishes them on the
+ * LogEntryTopic for processing. It will retrieve and submit in batches of 1000 as the default.
  *
  * As an executable, it will return a date that is the latest LogLastAggregated
  *
@@ -82,12 +79,13 @@ import org.dataone.cn.hazelcast.HazelcastClientFactory;
  *
  * @author waltz
  */
-public class LogHarvesterTask  {
+public class LogHarvesterTask {
 
+    Logger logger = Logger.getLogger(LogHarvesterTask.class.getName());
     private static final long serialVersionUID = 10000000;
     NodeHarvester nodeHarvester;
     NodeReference d1NodeReference;
-
+    NodeRegistryLogAggregationService nodeRegistryLogAggregationService = new NodeRegistryLogAggregationServiceImpl();
     private Integer queryTotalLimit = Settings.getConfiguration().getInt("LogAggregator.query_total_limit", 10000);
     private static final String geoIPdbName = Settings.getConfiguration().getString("LogAggregator.geoIPdbName");
 
@@ -98,12 +96,14 @@ public class LogHarvesterTask  {
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     private static final int MAX_OFFERED_ATTEMPTS = 5;
     private static final int MAX_LIST_LOG_ENTRY_SOLR_ITEMS = 500;
+
     public LogHarvesterTask(NodeHarvester d1NodeHarvester) {
         this.nodeHarvester = d1NodeHarvester;
         this.d1NodeReference = d1NodeHarvester.getNodeReference();
 
     }
     private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
+
     /**
      * Implement the Callable interface, retrieves logging information from a D1 Node and publishes a
      * List<LogEntrySolrItem> to a hazelcast topic
@@ -116,10 +116,9 @@ public class LogHarvesterTask  {
 
     public Date harvest() throws Exception {
 
-        Logger logger = Logger.getLogger(LogHarvesterTask.class.getName());
         SolrClientManager solrClientManager = SolrClientManager.getInstance();
         logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " Starting");
-        LogAccessRestriction logAccessRestriction = new LogAccessRestriction();
+
         // COUNTER compliance of Event Log records is explained in the DataONE UsageStats document:
         //
         //     https://purl.dataone.org/architecture-dev/design/UsageStatistics.html#counter-compliance
@@ -169,20 +168,15 @@ public class LogHarvesterTask  {
             // all of these updates since we have a listener in HarvestSchedulingManager
             // that determines when updates/additions have occured and
             // re-adjusts scheduling
-            NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(d1NodeReference.getValue());
-            NodeAccess nodeAccess = nodeRegistryService.getNodeAccess();
-            // logger is not  be serializable, but no need to make it transient imo
-
             // Need the LinkedHashMap to preserver insertion order
-            Node d1Node = nodeRegistryService.getNode(d1NodeReference);
-            Date lastMofidiedDate = nodeAccess.getLogLastAggregated(d1NodeReference);
+            Date lastMofidiedDate = nodeRegistryLogAggregationService.getLogLastAggregated(d1NodeReference);
 
             if (lastMofidiedDate == null) {
                 lastMofidiedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
             }
 
             Date mostRecentLoggedDate = new Date(lastMofidiedDate.getTime());
-            
+
             // The last Harvested Date is always the most recent date of the last harvest
             // To get the next range of records, add a millisecond to the date
             // for use as the 'fromDate' parameter of the log query            
@@ -217,41 +211,41 @@ public class LogHarvesterTask  {
             int readEventCacheCurrentMax = 1000;
 
             BufferedReader inBuf;
-            
+
             // Read in the list of web robots needed for COUNTER compliance checking
             String filePath = null;
             try {
-				if (doWebRobotIPcheck) {
-					String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
-					String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
-					// Read in the list of IP addresses associated with known web robots
-					filePath = webRobotIPsFilePath;
-					inBuf = new BufferedReader(new FileReader(filePath));
-					CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
-					webRobotIPs = parser.getRecords();
-					parser.close();
+                if (doWebRobotIPcheck) {
+                    String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
+                    String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
+                    // Read in the list of IP addresses associated with known web robots
+                    filePath = webRobotIPsFilePath;
+                    inBuf = new BufferedReader(new FileReader(filePath));
+                    CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+                    webRobotIPs = parser.getRecords();
+                    parser.close();
 					// Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
-					// will be flagged as robot requests, so that these requests can be easily filtered
-					// from usage statistics
-					filePath = DataONE_IPsFilePath;
-					inBuf = new BufferedReader(new FileReader(filePath));
-					parser = new CSVParser(inBuf, CSVFormat.RFC4180);
-					webRobotIPs.addAll(parser.getRecords());
-					parser.close();
-				}
-				
+                    // will be flagged as robot requests, so that these requests can be easily filtered
+                    // from usage statistics
+                    filePath = DataONE_IPsFilePath;
+                    inBuf = new BufferedReader(new FileReader(filePath));
+                    parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+                    webRobotIPs.addAll(parser.getRecords());
+                    parser.close();
+                }
+
                 String inLine;
-				filePath = fullWebRobotListFilePath;
+                filePath = fullWebRobotListFilePath;
                 inBuf = new BufferedReader(new FileReader(filePath));
                 while ((inLine = inBuf.readLine()) != null) {
-					fullWebRobotList.add(inLine);
+                    fullWebRobotList.add(inLine);
                 }
                 inBuf.close();
 
-				filePath = partialWebRobotListFilePath;
+                filePath = partialWebRobotListFilePath;
                 inBuf = new BufferedReader(new FileReader(filePath));
                 while ((inLine = inBuf.readLine()) != null) {
-					partialWebRobotList.add(inLine);
+                    partialWebRobotList.add(inLine);
                 }
                 inBuf.close();
             } catch (FileNotFoundException ex) {
@@ -336,45 +330,45 @@ public class LogHarvesterTask  {
                          * derived from a field in the solrItem (i.e. location names,
                          * geohash_* are derived from the ipAddress in the solrItem).
                          */
-			try {
+                        try {
                             solrItem.updateSysmetaFields(systemMetadata);
-			} catch (Exception e) {
-			    e.printStackTrace();
-			    logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
-			        + " error setting system metadata fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
+                                    + " error setting system metadata fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
                             // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
                             // log solr index
-			    continue;
-			}
-			try {
+                            continue;
+                        }
+                        try {
                             solrItem.updateLocationFields(geoIPsvc);
-			} catch (Exception e) {
-			    e.printStackTrace();
-			    logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
-			        + " error setting location fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
+                                    + " error setting location fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
                             // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
                             // log solr index
-			    continue;
-			}
-			try {
-			    solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck,
-			        repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
-			} catch (Exception e) {
-			    e.printStackTrace();
-			    logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
-			        + " error setting COUNTER fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
+                            continue;
+                        }
+                        try {
+                            solrItem.setCOUNTERfields(partialWebRobotList, fullWebRobotList, readEventCache, eventsToCheck,
+                                    repeatVisitIntervalSeconds, webRobotIPs, doWebRobotIPcheck);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            logger.error("LogHarvesterTask-" + d1NodeReference.getValue()
+                                    + " error setting COUNTER fields for log entryId: " + solrItem.getEntryId() + ", id: " + solrItem.getPid());
                             // We encountered an unrecoverable error, so skip this record and don't add it to the list of records that will be added to the event
                             // log solr index
-			    continue;
-			}
+                            continue;
+                        }
                         // Purge the read event cache if it grows past a specified max value, however
                         // the number of items in the cache is determined by how far away they are from
                         // the time of the last event, so we need to check the purged size to see
-                    	// if the the cache needs to be bigger.
-                       	if (readEventCache.size() > readEventCacheCurrentMax) {
+                        // if the the cache needs to be bigger.
+                        if (readEventCache.size() > readEventCacheCurrentMax) {
                             logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + " Purging Read Event Cache, size: " + readEventCache.size());
                             Iterator<Map.Entry<String, DateTime>> iterator = readEventCache.entrySet().iterator();
-                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds+1);
+                            DateTime eventWindowStart = new DateTime(mostRecentLoggedDate).minusSeconds(repeatVisitIntervalSeconds + 1);
                             while (iterator.hasNext()) {
                                 Map.Entry<String, DateTime> readEvent = iterator.next();
                                 if (readEvent.getValue().isBefore(eventWindowStart)) {
@@ -394,14 +388,14 @@ public class LogHarvesterTask  {
                                 int newMax = readEventCache.size() + Math.round(perc);
                                 // Try to increase cache size, but don't increase past max value
                                 if (newMax < readEventCacheMax) {
-                                	readEventCacheCurrentMax = newMax;
-                                	logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + "Adjusting readEventCache max to: " + readEventCacheCurrentMax);
+                                    readEventCacheCurrentMax = newMax;
+                                    logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + "Adjusting readEventCache max to: " + readEventCacheCurrentMax);
                                 } else {
-                                	readEventCacheCurrentMax = readEventCacheMax;
-                                	logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + "Can't adjust readEventCache max to greater than: " + readEventCacheMax);
-                        }
+                                    readEventCacheCurrentMax = readEventCacheMax;
+                                    logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + "Can't adjust readEventCache max to greater than: " + readEventCacheMax);
+                                }
                             }
-                    	}
+                        }
 
                         /* Use the Member Node identifier combined with entryId for the Solr unique key. This natural key should be 
                          * globally unique, but also ensure that re-harvesting will not add duplicate records.
@@ -412,7 +406,7 @@ public class LogHarvesterTask  {
                         //logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + " added id: " + solrItem.getPid() + " to solt item list.");
                     }
 
-    		    logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + " Done setting fields for entries, # of items to be added: " + logEntrySolrItemListToPublish.size());
+                    logger.debug("LogHarvesterTask-" + d1NodeReference.getValue() + " Done setting fields for entries, # of items to be added: " + logEntrySolrItemListToPublish.size());
 
                     // publish 100 at a time, do not overwhelm the
                     // network with massive packets, or too many small packets
@@ -431,7 +425,7 @@ public class LogHarvesterTask  {
                         int offeredAttempts = 0;
 
                         while (!offeredLogEntry) {
-                            
+
                             try {
                                 offeredLogEntry = solrClientManager.submitBeans(d1NodeReference, publishEntrySolrItemList);
                             } catch (SolrServerException ex) {
@@ -443,11 +437,11 @@ public class LogHarvesterTask  {
                                 ex.printStackTrace();
                                 offeredLogEntry = false;
                             }
-                            
+
                             ++offeredAttempts;
                             if (offeredAttempts > MAX_OFFERED_ATTEMPTS) {
                                 if (mostRecentLoggedDate.after(lastMofidiedDate)) {
-                                    nodeAccess.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
+                                    nodeRegistryLogAggregationService.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
                                     logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " ServiceFailure Latested Harvested Log Entry Date " + format.format(mostRecentLoggedDate));
                                 }
                                 throw new ServiceFailure("-500", "attempted to offer LogEntryQueue " + MAX_OFFERED_ATTEMPTS + "try again later");
@@ -463,43 +457,21 @@ public class LogHarvesterTask  {
                     } while (endIndex < logEntrySolrItemListToPublish.size());
                     // Persist the most recent log date in LDAP
                     if (mostRecentLoggedDate.after(lastMofidiedDate)) {
-                        nodeAccess.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
+                        nodeRegistryLogAggregationService.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
                         logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " Latested Harvested Log Entry Date " + format.format(mostRecentLoggedDate));
                     }
                 }
             } while (tryAgain || (!logQueryStack.isEmpty()));
             logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " Complete");
             return mostRecentLoggedDate;
-        } catch (InvalidToken ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
-            throw new ExecutionException(ex);
-        } catch (NotImplemented ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
-            throw new ExecutionException(ex);
-        } catch (InvalidRequest ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
-            throw new ExecutionException(ex);
-        } catch (ServiceFailure ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+        } catch (InvalidToken | NotImplemented | InvalidRequest | ServiceFailure | NotAuthorized ex) {
+            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML), ex);
             throw new ExecutionException(ex);
         } catch (EmptyStackException ex) {
-            logger.warn("For some reason the date logQueryStack threw an empty exception but isEmpty reported false?");
-            throw new ExecutionException(ex);
-        } catch (NotAuthorized ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
-            throw new ExecutionException(ex);
-        } catch (NotFound ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.serialize(ex.FMT_XML));
+            logger.warn("For some reason the date logQueryStack threw an empty exception but isEmpty reported false?", ex);
             throw new ExecutionException(ex);
         } catch (IllegalArgumentException ex) {
-            ex.printStackTrace();
-            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
+            logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage(), ex);
             throw new ExecutionException(ex);
         }
     }
