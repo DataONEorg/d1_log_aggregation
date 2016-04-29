@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.codec.net.URLCodec;
 import org.apache.log4j.Logger;
@@ -145,7 +144,6 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
         List<LogEntrySolrItem> completeLogEntrySolrItemList = new ArrayList<LogEntrySolrItem>();
 
         String escapedPID = ClientUtils.escapeQueryChars(pid);
-        logger.debug(escapedPID);
 
         SolrQuery queryParams = new SolrQuery();
         queryParams.setQuery("pid:" + escapedPID);
@@ -154,7 +152,7 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
         QueryResponse queryResponse;
         try {
-//            logger.debug(queryParams.getQuery());
+
             queryResponse = localhostSolrServer.query(queryParams);
 
             List<LogEntrySolrItem> logEntrySolrItemList = queryResponse
@@ -172,13 +170,9 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
 
                 } while (currentTotal < totalResults);
             }
-        } catch (SolrServerException ex) {
-            ex.printStackTrace();
-            logger.error(ex.getMessage());
-        } catch (IOException ioe) {
-            ioe.printStackTrace();
-            logger.error(ioe.getMessage());
-        }
+        } catch (IOException | SolrServerException ex) {
+            logger.error(ex.getMessage(), ex);
+        } 
 //        logger.debug("returning # log entries to modify: " + completeLogEntrySolrItemList.size());
         return completeLogEntrySolrItemList;
     }
@@ -215,15 +209,10 @@ public class SystemMetadataEntryListener implements EntryListener<Identifier, Sy
             try {
                 localhostSolrServer.addBeans(publishEntrySolrItemList);
                 localhostSolrServer.commit();
-            } catch (SolrServerException ex) {
-                logger.error("SystemMetadataEntryListener- "  + ex.getMessage());
-                ex.printStackTrace();
+            } catch (IOException | SolrServerException ex) {
+                logger.error("SystemMetadataEntryListener- "  + ex.getMessage(), ex);
 
-            } catch (IOException ex) {
-                logger.error("SystemMetadataEntryListener- "  + ex.getMessage());
-                ex.printStackTrace();
-
-            }
+            } 
             startIndex = endIndex;
         } while (endIndex < logEntrySolrItemList.size());
     }

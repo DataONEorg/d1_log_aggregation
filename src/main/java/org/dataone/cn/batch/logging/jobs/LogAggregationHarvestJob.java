@@ -30,9 +30,10 @@ import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
 import org.dataone.cn.batch.logging.NodeHarvesterFactory;
 import org.dataone.cn.batch.logging.NodeHarvester;
-import org.dataone.cn.batch.logging.NodeRegistryPool;
+import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
+import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.cn.ldap.NodeAccess;
-import org.dataone.service.cn.impl.v2.NodeRegistryService;
+import org.dataone.service.cn.v2.impl.NodeRegistryServiceImpl;
 import org.dataone.service.types.v2.Node;
 
 /**
@@ -60,12 +61,12 @@ public class LogAggregationHarvestJob implements Job {
                 = new SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss zzz");
 
         Logger logger = Logger.getLogger(LogAggregationHarvestJob.class.getName());
-        boolean nodeLocked = false;
+
         IMap<String, String> hzLogAggregatorLockMap = null;
         NodeReference nodeReference = new NodeReference();
         JobExecutionException jex = null;
         String nodeIdentifier = jobContext.getMergedJobDataMap().getString("NodeIdentifier");
-        String lockName = nodeIdentifier;
+
         logger.info("Job-" + nodeIdentifier + " executing job");
         try {
             boolean activateJob = Boolean.parseBoolean(Settings.getConfiguration().getString("LogAggregator.active"));
@@ -74,12 +75,11 @@ public class LogAggregationHarvestJob implements Job {
 
                 // look at the node, if the boolean property of the node
                 // aggregateLogs is true, then set to false
-                NodeRegistryService nodeRegistryService = NodeRegistryPool.getInstance().getNodeRegistryService(nodeReference.getValue());
-                NodeAccess nodeAccess = nodeRegistryService.getNodeAccess();
+                NodeRegistryLogAggregationService nodeRegistryLogAggregationService = new NodeRegistryLogAggregationServiceImpl();
 
-                if (nodeAccess.getAggregateLogs(nodeReference)) {
-                    nodeAccess.setAggregateLogs(nodeReference, false);
-                    Node node = nodeRegistryService.getNode(nodeReference);
+                if (nodeRegistryLogAggregationService.getAggregateLogs(nodeReference)) {
+                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, false);
+                    Node node = nodeRegistryLogAggregationService.getNode(nodeReference);
                     NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
 
                     LogHarvesterTask harvestTask = new LogHarvesterTask(nodeHarvester);
@@ -90,8 +90,8 @@ public class LogAggregationHarvestJob implements Job {
                     } else {
                         logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
                     }
-                    nodeAccess.setAggregateLogs(nodeReference, true);
-                    nodeAccess.setAggregateLogs(nodeReference, true);
+                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, true);
+                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, true);
                 } else {
                     logger.error("Job-" + nodeIdentifier + " LDAP aggregateLogs boolean is False. Check for MN errors.");
                 }
