@@ -67,6 +67,10 @@ import org.dataone.cn.batch.logging.SolrClientManager;
 import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
 import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.cn.hazelcast.HazelcastClientFactory;
+import org.dataone.cn.log.MetricEvent;
+import org.dataone.cn.log.MetricLogClient;
+import org.dataone.cn.log.MetricLogClientFactory;
+import org.dataone.cn.log.MetricLogEntry;
 
 /**
  * A executable task that retrieves a list of LogEntry by calling log on a MN or CN and then publishes them on the
@@ -96,7 +100,9 @@ public class LogHarvesterTask {
     private static final Date initializedDate = DateTimeMarshaller.deserializeDateToUTC("1900-01-01T00:00:00.000-00:00");
     private static final int MAX_OFFERED_ATTEMPTS = 5;
     private static final int MAX_LIST_LOG_ENTRY_SOLR_ITEMS = 500;
-
+    static final MetricLogClient metricLogger = MetricLogClientFactory.getMetricLogClient();
+    private int logAggrMetricTotalSubmitted;
+    private int logAggMetricTotalRetrieved;
     public LogHarvesterTask(NodeHarvester d1NodeHarvester) {
         this.nodeHarvester = d1NodeHarvester;
         this.d1NodeReference = d1NodeHarvester.getNodeReference();
@@ -115,7 +121,8 @@ public class LogHarvesterTask {
      */
 
     public Date harvest() throws Exception {
-
+        logAggrMetricTotalSubmitted = 0;
+        logAggMetricTotalRetrieved = 0;
         SolrClientManager solrClientManager = SolrClientManager.getInstance();
         logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " Starting");
 
@@ -276,6 +283,7 @@ public class LogHarvesterTask {
                 try {
                     logEntrySolrItemList = nodeHarvester.harvest(logQueryStack, queryTotalLimit);
                     queryFailures = 0;
+                    logAggMetricTotalRetrieved += logEntrySolrItemList.size();
                 } catch (QueryLimitException e) {
                     tryAgain = true;
                 } catch (BaseException e) {
@@ -428,6 +436,7 @@ public class LogHarvesterTask {
 
                             try {
                                 offeredLogEntry = solrClientManager.submitBeans(d1NodeReference, publishEntrySolrItemList);
+                                logAggrMetricTotalSubmitted += publishEntrySolrItemList.size();
                             } catch (SolrServerException ex) {
                                 logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage());
                                 ex.printStackTrace();
@@ -473,6 +482,16 @@ public class LogHarvesterTask {
         } catch (IllegalArgumentException ex) {
             logger.error("LogHarvesterTask-" + d1NodeReference.getValue() + " " + ex.getMessage(), ex);
             throw new ExecutionException(ex);
+        } finally {
+        MetricLogEntry metricHarvestRetrievedLogEvent = new MetricLogEntry(
+                MetricEvent.LOG_AGGREGATION_HARVEST_RETRIEVED,
+                d1NodeReference, null, Integer.toString(logAggMetricTotalRetrieved));
+        metricLogger.logMetricEvent(metricHarvestRetrievedLogEvent);    
+        MetricLogEntry metricHarvestSubmittedLogEvent = new MetricLogEntry(
+                MetricEvent.LOG_AGGREGATION_HARVEST_SUBMITTED,
+                d1NodeReference, null, Integer.toString(logAggrMetricTotalSubmitted));
+        metricLogger.logMetricEvent(metricHarvestSubmittedLogEvent);
+
         }
     }
 }
