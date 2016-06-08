@@ -17,41 +17,47 @@ import org.dataone.service.types.v2.Node;
 import org.dataone.service.types.v2.NodeList;
 
 /**
- *
+ *  Currently the service is handled by a Facade around the NodeRegistry
+ *  However, when log aggregation is moved to a separate machine
+ *  other than the CN, the use of ldap will be abandoned.
+ *  listNodes and getNode may be performed by libclient java calls.
+ *  getAggregateLogs, getLogLastAggregated, setAggregateLogs and
+ *  setLogLastAggregated may be persisted to a separate data store
+ *  
  * @author waltz
  */
 public class NodeRegistryLogAggregationServiceImpl implements NodeRegistryLogAggregationService {
 
-                private NodeRegistryLogAggregationFacade nodeRegistrySyncFacade
+                private NodeRegistryLogAggregationFacade nodeRegistryLogAggregationFacade
                     = new NodeRegistryLogAggregationFacade();
     @Override
     public NodeList listNodes() throws ServiceFailure, NotImplemented {
-        return nodeRegistrySyncFacade.getApprovedNodeList();
+        return nodeRegistryLogAggregationFacade.getApprovedNodeList();
     }
 
     @Override
     public Node getNode(NodeReference nodeId) throws NotFound, ServiceFailure {
-        return nodeRegistrySyncFacade.getNode(nodeId);
+        return nodeRegistryLogAggregationFacade.getNode(nodeId);
     }
 
     @Override
     public Boolean getAggregateLogs(NodeReference nodeIdentifier) throws ServiceFailure {
-        return nodeRegistrySyncFacade.getAggregateLogs(nodeIdentifier);
+        return nodeRegistryLogAggregationFacade.getAggregateLogs(nodeIdentifier);
     }
 
     @Override
     public Date getLogLastAggregated(NodeReference nodeIdentifier) throws ServiceFailure {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        return nodeRegistryLogAggregationFacade.getLogLastAggregated(nodeIdentifier);
     }
 
     @Override
     public void setAggregateLogs(NodeReference nodeIdentifier, Boolean aggregateLogs) throws ServiceFailure {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        nodeRegistryLogAggregationFacade.setAggregateLogs(nodeIdentifier, aggregateLogs);
     }
 
     @Override
     public void setLogLastAggregated(NodeReference nodeIdentifier, Date logAggregationDate) throws ServiceFailure {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        nodeRegistryLogAggregationFacade.setLogLastAggregated(nodeIdentifier, logAggregationDate);
     }
     
 }
