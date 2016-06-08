@@ -18,6 +18,7 @@
 package org.dataone.cn.batch.logging.jobs;
 
 import com.hazelcast.core.IMap;
+import java.io.IOException;
 import java.util.Date;
 import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.tasks.LogHarvesterTask;
@@ -28,12 +29,15 @@ import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
+import java.util.logging.Level;
 import org.dataone.cn.batch.logging.NodeHarvesterFactory;
 import org.dataone.cn.batch.logging.NodeHarvester;
 import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
 import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
 import org.dataone.cn.ldap.NodeAccess;
 import org.dataone.service.cn.v2.impl.NodeRegistryServiceImpl;
+import org.dataone.service.exceptions.NotFound;
+import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v2.Node;
 
 /**
@@ -78,20 +82,22 @@ public class LogAggregationHarvestJob implements Job {
                 NodeRegistryLogAggregationService nodeRegistryLogAggregationService = new NodeRegistryLogAggregationServiceImpl();
 
                 if (nodeRegistryLogAggregationService.getAggregateLogs(nodeReference)) {
-                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, false);
-                    Node node = nodeRegistryLogAggregationService.getNode(nodeReference);
-                    NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
+                    try {
+                        nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, false);
+                        Node node = nodeRegistryLogAggregationService.getNode(nodeReference);
+                        NodeHarvester nodeHarvester = NodeHarvesterFactory.getNodeHarvester(node);
 
-                    LogHarvesterTask harvestTask = new LogHarvesterTask(nodeHarvester);
-                    Date lastProcessingCompletedDate = harvestTask.harvest();
+                        LogHarvesterTask harvestTask = new LogHarvesterTask(nodeHarvester);
+                        Date lastProcessingCompletedDate = harvestTask.harvest();
 
-                    if (lastProcessingCompletedDate == null) {
-                        logger.info("Job-" + nodeIdentifier + " Task returned with no completion date!");
-                    } else {
-                        logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
+                        if (lastProcessingCompletedDate == null) {
+                            logger.info("Job-" + nodeIdentifier + " Task returned with no completion date!");
+                        } else {
+                            logger.info("Job-" + nodeIdentifier + " Task returned with a date of " + format.format(lastProcessingCompletedDate));
+                        }
+                    } finally {
+                        nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, true);
                     }
-                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, true);
-                    nodeRegistryLogAggregationService.setAggregateLogs(nodeReference, true);
                 } else {
                     logger.error("Job-" + nodeIdentifier + " LDAP aggregateLogs boolean is False. Check for MN errors.");
                 }
@@ -101,8 +107,8 @@ public class LogAggregationHarvestJob implements Job {
             }
 
         } catch (Exception ex) {
-            ex.printStackTrace();
-            logger.error("Job-" + nodeIdentifier + " - died: " + ex.getMessage());
+ 
+            logger.error("Job-" + nodeIdentifier + " - died: " + ex.getMessage(), ex);
             jex = new JobExecutionException();
             jex.setStackTrace(ex.getStackTrace());
         }
