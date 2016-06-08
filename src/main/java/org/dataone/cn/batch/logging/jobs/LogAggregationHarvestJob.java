@@ -18,7 +18,6 @@
 package org.dataone.cn.batch.logging.jobs;
 
 import com.hazelcast.core.IMap;
-import java.io.IOException;
 import java.util.Date;
 import org.apache.log4j.Logger;
 import org.dataone.cn.batch.logging.tasks.LogHarvesterTask;
@@ -29,15 +28,10 @@ import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
 import java.text.SimpleDateFormat;
-import java.util.logging.Level;
 import org.dataone.cn.batch.logging.NodeHarvesterFactory;
 import org.dataone.cn.batch.logging.NodeHarvester;
 import org.dataone.cn.batch.service.v2.NodeRegistryLogAggregationService;
 import org.dataone.cn.batch.service.v2.impl.NodeRegistryLogAggregationServiceImpl;
-import org.dataone.cn.ldap.NodeAccess;
-import org.dataone.service.cn.v2.impl.NodeRegistryServiceImpl;
-import org.dataone.service.exceptions.NotFound;
-import org.dataone.service.exceptions.ServiceFailure;
 import org.dataone.service.types.v2.Node;
 
 /**
@@ -107,7 +101,7 @@ public class LogAggregationHarvestJob implements Job {
             }
 
         } catch (Exception ex) {
- 
+
             logger.error("Job-" + nodeIdentifier + " - died: " + ex.getMessage(), ex);
             jex = new JobExecutionException();
             jex.setStackTrace(ex.getStackTrace());
