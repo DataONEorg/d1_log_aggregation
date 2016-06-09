@@ -486,10 +486,12 @@ public class LogHarvesterTask {
         MetricLogEntry metricHarvestRetrievedLogEvent = new MetricLogEntry(
                 MetricEvent.LOG_AGGREGATION_HARVEST_RETRIEVED,
                 d1NodeReference, null, Integer.toString(logAggMetricTotalRetrieved));
+        Date metricHarvestLogEventDate = new Date(metricHarvestRetrievedLogEvent.getDateLogged().getTime());
         metricLogger.logMetricEvent(metricHarvestRetrievedLogEvent);    
         MetricLogEntry metricHarvestSubmittedLogEvent = new MetricLogEntry(
                 MetricEvent.LOG_AGGREGATION_HARVEST_SUBMITTED,
                 d1NodeReference, null, Integer.toString(logAggrMetricTotalSubmitted));
+        metricHarvestSubmittedLogEvent.setDateLogged(metricHarvestLogEventDate);
         metricLogger.logMetricEvent(metricHarvestSubmittedLogEvent);
 
         }
