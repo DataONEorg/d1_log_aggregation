@@ -164,7 +164,7 @@ public class LogHarvesterTask {
                 // This means that the latest date to retrieve will be the last second of the
                 // previous day since the toDate variable of logRecords
                 // returns Records with a time stamp less than (<) the endDateTime provided
-                // see http://mule1.dataone.org/ArchitectureDocs-current/apis/MN_APIs.html#MNCore.getLogRecords
+                // see http://purl.dataone.org/architecture/apis/MN_APIs.html#MNCore.getLogRecords
                 endDateTime = endDateTime.withTime(0, 0, 0, 0);
             }
 
