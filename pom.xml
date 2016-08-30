@@ -10,6 +10,7 @@
     <url>http://dataone.org</url>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <compiler.target.version>1.7</compiler.target.version>
         <spring.version>3.1.4.RELEASE</spring.version>
         <quartz.version>2.1.6</quartz.version>
         <solr.version>5.2.1</solr.version>
@@ -24,7 +25,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <source>1.7</source>
-                    <target>1.7</target>
+                    <target>${compiler.target.version}</target>
                 </configuration>
             </plugin>
             <plugin>
