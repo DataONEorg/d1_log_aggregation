@@ -87,6 +87,8 @@ public class LogHarvesterTask {
 
     Logger logger = Logger.getLogger(LogHarvesterTask.class.getName());
     private static final long serialVersionUID = 10000000;
+
+    
     NodeHarvester nodeHarvester;
     NodeReference d1NodeReference;
     NodeRegistryLogAggregationService nodeRegistryLogAggregationService = new NodeRegistryLogAggregationServiceImpl();
@@ -103,12 +105,16 @@ public class LogHarvesterTask {
     static final MetricLogClient metricLogger = MetricLogClientFactory.getMetricLogClient();
     private int logAggrMetricTotalSubmitted;
     private int logAggMetricTotalRetrieved;
+    
+    private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
+    
+    
     public LogHarvesterTask(NodeHarvester d1NodeHarvester) {
         this.nodeHarvester = d1NodeHarvester;
         this.d1NodeReference = d1NodeHarvester.getNodeReference();
 
     }
-    private Stack<LogQueryDateRange> logQueryStack = new Stack<LogQueryDateRange>();
+    
 
     /**
      * Implement the Callable interface, retrieves logging information from a D1 Node and publishes a
@@ -138,6 +144,10 @@ public class LogHarvesterTask {
         ArrayList<String> partialWebRobotList = new ArrayList<String>();
         // Cache for the read events, indexed by IPaddress. This cache will grow as the log entries
         // are processed, so it will be purged after it reaches a certain size.
+        
+        
+        // XXX: optimize the repeat visit check - currently order N squared, and no
+        // presorting to help out.  
         HashMap<String, DateTime> readEventCache = new HashMap<String, DateTime>();
         List<CSVRecord> webRobotIPs = new ArrayList<CSVRecord>();
 
@@ -231,7 +241,7 @@ public class LogHarvesterTask {
                     CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
                     webRobotIPs = parser.getRecords();
                     parser.close();
-					// Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
+                    // Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
                     // will be flagged as robot requests, so that these requests can be easily filtered
                     // from usage statistics
                     filePath = DataONE_IPsFilePath;
@@ -320,7 +330,6 @@ public class LogHarvesterTask {
                         }
 
                         Date now = new Date();
-                        Date dateAggregated = now;
                         Identifier pid = new Identifier();
                         pid.setValue(solrItem.getPid());
                         SystemMetadata systemMetadata = systemMetadataMap.get(pid);
@@ -464,6 +473,8 @@ public class LogHarvesterTask {
 
                         startIndex = endIndex;
                     } while (endIndex < logEntrySolrItemListToPublish.size());
+                    
+                    
                     // Persist the most recent log date in LDAP
                     if (mostRecentLoggedDate.after(lastMofidiedDate)) {
                         nodeRegistryLogAggregationService.setLogLastAggregated(d1NodeReference, mostRecentLoggedDate);
@@ -471,6 +482,8 @@ public class LogHarvesterTask {
                     }
                 }
             } while (tryAgain || (!logQueryStack.isEmpty()));
+            
+            
             logger.info("LogHarvesterTask-" + d1NodeReference.getValue() + " Complete");
             return mostRecentLoggedDate;
         } catch (InvalidToken | NotImplemented | InvalidRequest | ServiceFailure | NotAuthorized ex) {
