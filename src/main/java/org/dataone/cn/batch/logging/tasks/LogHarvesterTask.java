@@ -227,55 +227,69 @@ public class LogHarvesterTask {
             // of events older than 30 seconds
             int readEventCacheCurrentMax = 1000;
 
-            BufferedReader inBuf;
 
-            // Read in the list of web robots needed for COUNTER compliance checking
+            /* 
+             * Read in the list of web robots needed for COUNTER compliance checking
+             * Using the try-with-resources construct is used here (4x) to
+             * ensure we avoid resource-leaks.
+             * Checked-exceptions are caught in the outer try
+             */
             String filePath = null;
             try {
                 if (doWebRobotIPcheck) {
                     String webRobotIPsFilePath = Settings.getConfiguration().getString("LogAggregator.webRobotIPsFilePath");
                     String DataONE_IPsFilePath = Settings.getConfiguration().getString("LogAggregator.DataONE_IPsFilePath");
                     // Read in the list of IP addresses associated with known web robots
-                    filePath = webRobotIPsFilePath;
-                    inBuf = new BufferedReader(new FileReader(filePath));
-                    CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
-                    webRobotIPs = parser.getRecords();
-                    parser.close();
+
+                    
+                    try (FileReader fr = new FileReader(webRobotIPsFilePath);
+                            BufferedReader inBuf = new BufferedReader(fr)) 
+                    {                   
+                        CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+                        webRobotIPs = parser.getRecords();
+                        parser.close();
+                    }
+                    
                     // Add the list of DataONE CNs and MNs. Requests made from DataONE CNs or MNs
                     // will be flagged as robot requests, so that these requests can be easily filtered
                     // from usage statistics
-                    filePath = DataONE_IPsFilePath;
-                    inBuf = new BufferedReader(new FileReader(filePath));
-                    parser = new CSVParser(inBuf, CSVFormat.RFC4180);
-                    webRobotIPs.addAll(parser.getRecords());
-                    parser.close();
+                    try (FileReader fr = new FileReader(DataONE_IPsFilePath);
+                            BufferedReader inBuf = new BufferedReader(fr)) 
+                    {
+                        CSVParser parser = new CSVParser(inBuf, CSVFormat.RFC4180);
+                        webRobotIPs.addAll(parser.getRecords());
+                        parser.close();
+                    }
+                }
+                
+                try (FileReader fr = new FileReader(fullWebRobotListFilePath);
+                        BufferedReader inBuf = new BufferedReader(fr)) 
+                {
+                    String inLine;
+                    while ((inLine = inBuf.readLine()) != null) {
+                        fullWebRobotList.add(inLine);
+                    }    
                 }
 
-                String inLine;
-                filePath = fullWebRobotListFilePath;
-                inBuf = new BufferedReader(new FileReader(filePath));
-                while ((inLine = inBuf.readLine()) != null) {
-                    fullWebRobotList.add(inLine);
+                try (FileReader fr = new FileReader(partialWebRobotListFilePath);
+                        BufferedReader inBuf = new BufferedReader(fr)) 
+                {
+                    String inLine;
+                    while ((inLine = inBuf.readLine()) != null) {
+                        partialWebRobotList.add(inLine);
+                    }    
                 }
-                inBuf.close();
-
-                filePath = partialWebRobotListFilePath;
-                inBuf = new BufferedReader(new FileReader(filePath));
-                while ((inLine = inBuf.readLine()) != null) {
-                    partialWebRobotList.add(inLine);
-                }
-                inBuf.close();
+                         
+                
             } catch (FileNotFoundException ex) {
-                ex.printStackTrace();
                 logger.error("LogHarvesterTask-"
                         + d1NodeReference.getValue() + " " + ex.getMessage()
-                        + String.format("Unable to open file '%s' which is needed for COUNTER compliance checking", filePath));
+                        + String.format("Unable to open file '%s' which is needed for COUNTER compliance checking", filePath), ex);
                 throw new ExecutionException(ex);
             } catch (IOException ex) {
-                ex.printStackTrace();
                 logger.error("LogHarvesterTask-"
                         + d1NodeReference.getValue() + " " + ex.getMessage()
-                        + String.format("Error reading file '%s' which is needed for COUNTER compliance checking", filePath));
+                        + String.format("Error reading file '%s' which is needed for COUNTER compliance checking", filePath), ex);
                 throw new ExecutionException(ex);
             }
 
