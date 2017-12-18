@@ -23,11 +23,13 @@ import static org.quartz.TriggerBuilder.newTrigger;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.plexus.util.CollectionUtils;
 import org.dataone.client.auth.CertificateManager;
@@ -132,6 +134,7 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
      *
      */
     public void init() {
+        InputStream is = null;
         try {
             instance = this;
             // this will initialize the https protocol of the solrserver client
@@ -164,8 +167,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             CertificateManager.getInstance().setCertificateLocation(clientCertificateLocation);
 
             Properties properties = new Properties();
-            properties.load(this.getClass().getResourceAsStream(
-                    "/org/dataone/configuration/logQuartz.properties"));
+            is = this.getClass().getResourceAsStream(
+                    "/org/dataone/configuration/logQuartz.properties");
+            properties.load(is);
+            
             StdSchedulerFactory schedulerFactory = new StdSchedulerFactory(properties);
             scheduler = schedulerFactory.getScheduler();
 
@@ -187,6 +192,10 @@ public class LogAggregationScheduleManager implements ApplicationContextAware {
             throw new IllegalStateException("NodeService failed: " + ex.getMessage());
         } catch (NotImplemented ex) {
             throw new IllegalStateException("NodeService failed: " + ex.getMessage());
+        }
+        finally {
+            if (is != null)
+                IOUtils.closeQuietly(is);
         }
     }
 
